@@ -13,7 +13,6 @@ import { assets } from "./assetLoader";
 import { ASSETS } from "../data/assets";
 import {
   paintGlassFront,
-  drawGlassOverlay,
   paintColorGrade,
   drawContactShadow,
   roundRectPath,
@@ -29,7 +28,6 @@ export class CanvasRenderer {
 
   private roomCanvas: HTMLCanvasElement;
   private roomDirty = true;
-  private useGlassOverlay = true;
   private elapsed = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -134,19 +132,17 @@ export class CanvasRenderer {
     this.scene.update(dt, tank);
     this.scene.draw(ctx, tank, light);
 
-    // 5) Procedural glass front (edges, rim, reflections, inner shadow).
+    // 5) Procedural glass front (edges, rim, reflections, inner shadow, gloss).
+    //    NB: we deliberately do NOT screen-blend the tank_glass.png photo on top.
+    //    That photo is a ¾-perspective shot of a real tank; over our flat,
+    //    front-on procedural tank it stamped a second, mismatched glass outline
+    //    inside the water. The procedural pass carries the glossiness instead.
     paintGlassFront(ctx, this.layout, this.elapsed);
 
-    // 6) Real glass photo as a subtle screen-blend sheen for extra realism.
-    if (this.useGlassOverlay) {
-      const glass = assets.get(ASSETS.tank.glass);
-      if (glass) drawGlassOverlay(ctx, glass, this.layout.tank, 0.3);
-    }
-
-    // 7) Name plate on the stand.
+    // 6) Name plate on the stand.
     this.drawNamePlate(ctx, tank.name);
 
-    // 8) Whole-frame colour grade + vignette.
+    // 7) Whole-frame colour grade + vignette.
     paintColorGrade(ctx, this.cssW, this.cssH, this.layout);
   }
 

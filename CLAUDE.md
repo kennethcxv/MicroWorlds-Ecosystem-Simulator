@@ -264,7 +264,9 @@ Companion docs to keep current:
   feeding/waste, filtration/plant export, water change; verified live (overfeed
   raised ammonia, water change cut nitrate/ammonia, leaves deducted).
 - ✅ Phase 3 gloss + animation pass — Playwright-verified glossy glass + live
-  creature motion.
+  creature motion. Removed the `tank_glass.png` photo overlay (it stamped a
+  mismatched inner outline); added lifelike fish motion — front-back depth
+  swimming + body undulation + velocity pitch.
 - ✅ Phase 2 foundation closed out: **vitest harness, 33 tests passing**;
   `resetSimState()` determinism fix; **22-species `aquaticCodex.ts`** mined from
   the stats bible with `species.ts` deriving from it (consistency tested).

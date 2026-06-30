@@ -60,6 +60,15 @@ _Last updated: 2026-06-29_
   source of truth) while keeping tuned render/sim values. Consistency enforced by
   tests. Build clean; Playwright re-verified (no regressions, score "Thriving").
 
+## Phase 3 polish — outline fix + lifelike fish ✅ (2026-06-29)
+- **Removed the glass-overlay double-outline:** dropped the `tank_glass.png`
+  screen-blend (its ¾-perspective edges stamped a mismatched inner outline);
+  procedural gloss carries the look. Before/after in `screenshots/outline-*.png`.
+- **Lifelike fish motion:** front-back depth swimming (per-fish `offZ` + wandering
+  depth targets), body undulation (head→tail strip warp in `drawSprite`, fish
+  only), velocity-aligned nose pitch, speed-scaled tail-beat; removed the old
+  rigid wiggle. Playwright-verified (depth spread + clean undulation, no seams).
+
 ## In progress (Phase 3 polish — remaining)
 - Schooling cohesion / bottom-dweller grazing & snail-crawl polish.
 - Plant sway + day/night lighting grade pass.

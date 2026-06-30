@@ -44,6 +44,13 @@ export interface SpritePlacement {
   scaleX?: number;
   rot?: number;
   alpha?: number;
+  /**
+   * Optional body undulation. Draws the sprite in vertical strips, each pushed
+   * vertically by a sine wave that travels head→tail, so a fish's body flexes
+   * and its tail sweeps as it swims (a real swim cue, not just a side-to-side
+   * slide). `amp` is in px; `waves` is the wave's phase span across the body.
+   */
+  bend?: { amp: number; phase: number; waves: number };
 }
 
 export interface SpriteStyle {
@@ -112,6 +119,8 @@ export function drawSprite(
   }
   sctx.globalCompositeOperation = "source-over";
 
+  const SW = Math.ceil(drawnW) + 2;
+  const SH = Math.ceil(drawnH) + 2;
   ctx.save();
   ctx.globalAlpha = place.alpha ?? 1;
   ctx.imageSmoothingQuality = "high";
@@ -119,7 +128,26 @@ export function drawSprite(
   const sx = place.scaleX != null ? place.scaleX : place.flip ? -1 : 1;
   if (sx !== 1) ctx.scale(sx, 1);
   if (place.rot) ctx.rotate(place.rot);
-  ctx.drawImage(stamp, 0, 0, Math.ceil(drawnW) + 2, Math.ceil(drawnH) + 2, -ax, -ay, Math.ceil(drawnW) + 2, Math.ceil(drawnH) + 2);
+
+  const bend = place.bend;
+  if (bend && bend.amp > 0.25) {
+    // Undulate: redraw the graded stamp in vertical strips. Each strip is offset
+    // vertically by a head→tail traveling wave, weighted toward the tail so the
+    // head stays steady. Strips overlap by 1px to avoid seams.
+    const strips = 12;
+    const headX = trim.x * iw * scale; // head edge (sprites face left → head at left)
+    const bodyW = trim.w * iw * scale || 1;
+    const stripW = SW / strips;
+    for (let i = 0; i < strips; i++) {
+      const sxs = i * stripW;
+      let frac = (sxs + stripW / 2 - headX) / bodyW;
+      frac = frac < 0 ? 0 : frac > 1 ? 1 : frac;
+      const off = Math.sin(bend.phase - frac * bend.waves) * bend.amp * Math.pow(frac, 1.4);
+      ctx.drawImage(stamp, sxs, 0, stripW + 1, SH, -ax + sxs, -ay + off, stripW + 1, SH);
+    }
+  } else {
+    ctx.drawImage(stamp, 0, 0, SW, SH, -ax, -ay, SW, SH);
+  }
   ctx.restore();
 
   const contentW = trim.w * iw * scale;

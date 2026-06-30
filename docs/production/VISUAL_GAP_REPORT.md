@@ -13,14 +13,14 @@ after each visual pass (with fresh Playwright screenshots).
 |------|--------|:--:|------|
 | Cozy eco-center room backdrop | warm, soft, framed | ✅ | blurred + teal wash + vignette so the tank is the focal point |
 | Wooden stand + name plate | tank sits on cabinet | ✅ | stand asset + procedural plaque |
-| Physical glass tank shell | reads as real glass | ✅ | procedural front + photo sheen; gloss pass verified (2026-06-29) |
-| Glossy reflections / sheen | bright highlights | ✅ | additive sheen, drifting pane reflections, edge glints, wet rims — Playwright-verified |
+| Physical glass tank shell | reads as real glass | ✅ | fully procedural front; photo overlay removed (it stamped a mismatched inner outline) |
+| Glossy reflections / sheen | bright highlights | ✅ | additive sheen, drifting pane reflections, edge glints, wet rims — no double-outline artifact |
 | Waterline highlight | crisp surface line | ✅ | animated surface line + brighter top water |
 | Caustics / god-rays / bubbles | lively water | ✅ | god-ray intensity tracks daylight; caustics + bubbles + particles |
 | Lush planted aquascape | dense, natural | ✅ | back-left/back-right tall clusters, hero centerpiece, low front plants |
 | Driftwood / rocks | natural, not flat planks | ✅ | scaled driftwood + seiryu/boulders; avoid flat plank look |
 | Detailed substrate | gravel bed | ✅ | substrate plate as ground bed |
-| Visible animated fish | clearly visible, alive | ✅ | depth-scaled; turn/face easing + speed-scaled wiggle — live motion verified |
+| Visible animated fish | clearly visible, alive | ✅ | depth (front-back) swimming + body undulation + velocity pitch + turn easing |
 | Bottom life (shrimp/snails) | grazing/crawling | ✅ | bottom-dweller agents present; grazing polish ongoing |
 | Open swimming space | mid/upper open | ✅ | aquascape leaves open mid/upper volume |
 | Dark-teal glassmorphism UI | premium panels | ✅ | top bar + side panels + actions + nav, glass styling |
@@ -32,10 +32,12 @@ after each visual pass (with fresh Playwright screenshots).
 
 ## Current top gaps (priority order)
 1. ~~Glass glossiness~~ ✅ done (2026-06-29).
-2. ~~Fish liveliness~~ ✅ live motion verified (2026-06-29). Remaining polish:
-   tighter schooling cohesion, bottom-dweller grazing, snail crawl.
-3. **Decorate flow** — button exists; editor (Phase 4) not built.
-4. **Secondary screens** — Shop/Collection/Research/Rescue/Breeding/Tasks are
+2. ~~Glass double-outline (photo overlay)~~ ✅ removed (2026-06-29) — see
+   `screenshots/outline-before.png` vs `outline-after.png`.
+3. ~~Fish liveliness~~ ✅ depth + undulation + pitch shipped (2026-06-29).
+   Remaining polish: tighter schooling cohesion, bottom-dweller grazing, snail crawl.
+4. **Decorate flow** — button exists; editor (Phase 4) not built.
+5. **Secondary screens** — Shop/Collection/Research/Rescue/Breeding/Tasks are
    placeholders vs. their reference targets (Phases 5–8).
 
 ## Method

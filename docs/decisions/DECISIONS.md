@@ -5,6 +5,36 @@ decision → consequences.
 
 ---
 
+## 2026-06-29 — Drop the tank_glass.png photo overlay (fixes the double-outline)
+**Context:** The glossy pass screen-blended `tank_glass.png` over the tank. That
+asset is a ¾-perspective photo of a real aquarium with bright cyan glass edges;
+over our flat, front-on procedural tank it stamped a *second*, mismatched glass
+outline inside the water (an inset rectangle with angled corner lines). Raising
+its alpha to 0.30 made it obvious; the perspectives can never align.
+**Decision:** Remove the photo overlay entirely. The procedural `paintGlassFront`
+(sheen, drifting reflections, edge highlights, corner glints, wet rims) carries
+the glossiness on its own.
+**Consequences:** The spurious inner outline is gone and the glass still reads
+glossy. `drawGlassOverlay` is now unused by the renderer (kept in effects for
+possible future per-geometry use). Verified via before/after screenshots in
+`docs/production/screenshots/outline-{before,after}.png`.
+
+## 2026-06-29 — Lifelike fish: depth swimming + body undulation
+**Context:** Fish only slid side-to-side at a fixed depth; the user wanted
+real-fish motion including front-to-back movement.
+**Decision:** (1) **Depth (front-back):** each fish holds a depth within its
+shoal's slab (per-fish `offZ`) and shoals/centerpieces/bottom-dwellers ease
+toward wandering depth targets, so fish visibly swim toward/away from the glass
+(scale + haze + occlusion already track `z`). (2) **Body undulation:** `drawSprite`
+gained an optional `bend` that redraws the sprite in ~12 vertical strips offset by
+a head→tail traveling wave (amplitude ∝ swim speed), so the body flexes and the
+tail sweeps — fish only (not the many tiny inverts, for perf). (3) **Pitch:** the
+nose eases toward the actual travel direction. The old rigid full-body wiggle
+rotation was removed in favour of the strip flex.
+**Consequences:** Fish read as alive and three-dimensional. ~12 strips × fish only
+keeps the per-frame cost modest. Verified in Playwright (motion across frames +
+zoomed flex with no strip seams).
+
 ## 2026-06-29 — Treat the existing build as the foundation (don't rebuild from zero)
 **Context:** The master prompt frames this as a "brand new project, build from
 scratch." But the project folder already contains a working Vite+TS+Canvas build
