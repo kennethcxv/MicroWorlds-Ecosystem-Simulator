@@ -1,0 +1,24 @@
+{
+  "name": "glasswater",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "GLASSWATER — a cozy 2.5D ecosystem & aquarium management sim.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "gen:asset": "node tools/generate-openai-asset.mjs",
+    "edit:asset": "node tools/edit-asset-with-fal.mjs",
+    "clean:bg": "node tools/remove-backgrounds.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2"
+  },
+  "dependencies": {
+    "@fal-ai/client": "^1.10.1",
+    "dotenv": "^17.4.2"
+  }
+}

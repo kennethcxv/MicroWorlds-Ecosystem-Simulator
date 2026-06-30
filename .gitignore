@@ -1,0 +1,11 @@
+node_modules
+dist
+.playwright-mcp
+*.local
+.DS_Store
+
+# Secrets — never commit. (.env.example is a safe template and is allowed.)
+.env
+.env.*
+!.env.example
+
