@@ -43,9 +43,32 @@ _Last updated: 2026-06-29_
   god-rays drifted) and glossy specular glass. Only console msg = favicon 404
   (harmless). Screenshots: `docs/production/screenshots/verify-gloss-{1,2}.png`.
 
+## Phase 2 foundation close-out ✅ (2026-06-29)
+- **Sim test harness (vitest):** `npm test` → **33 tests passing** across
+  `tests/{rng,sim,save,codex}.test.ts`. Covers deterministic RNG, feeding,
+  overfeeding, action gating, clean/water-change, the ammonia→nitrite→nitrate
+  cycle, health decline/recovery, habitat-score response, day-rollover income,
+  save/load round-trip + version/partial/malformed handling, and seed-repeatable
+  determinism.
+- **Determinism fix:** added `resetSimState()` (clears the module RNG stream +
+  warning debounce) and call it from the app's `reset()` so a new/reset game is
+  reproducible from its seed instead of inheriting stale caches.
+- **Authoritative content mined:** generated `src/data/aquaticCodex.ts` — the
+  full **22-species aquatic codex** from `04_docs` stats bible (taxonomy, care,
+  rarity, temp/pH bands, 1–7 design scales, procedural-render direction).
+  `species.ts` now derives name/latin/rarity/temp/diet from the codex (single
+  source of truth) while keeping tuned render/sim values. Consistency enforced by
+  tests. Build clean; Playwright re-verified (no regressions, score "Thriving").
+
 ## In progress (Phase 3 polish — remaining)
 - Schooling cohesion / bottom-dweller grazing & snail-crawl polish.
 - Plant sway + day/night lighting grade pass.
+
+## Data still to mine (cross-cutting)
+- Plant Library core data (land doc §8) and Hardscape core data (§10) — only the
+  aquatic-relevant rows needed near-term; current 6 plants + 5 hardscape suffice
+  for the tank.
+- Land Animal species (land doc §5) — defer to Phase 9 habitats.
 
 ## Not started
 - Automated sim tests (Phase 2 acceptance item).

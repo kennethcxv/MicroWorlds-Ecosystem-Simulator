@@ -99,6 +99,8 @@ See `docs/production/STATUS.md` for the live status and
 npm install          # install deps
 npm run dev          # Vite dev server (http://localhost:5173)
 npm run typecheck    # tsc --noEmit
+npm test             # vitest run — pure-sim + data tests (33 tests)
+npm run test:watch   # vitest watch mode
 npm run build        # tsc --noEmit && vite build
 npm run preview      # preview the production build
 
@@ -109,8 +111,9 @@ npm run clean:bg     # remove.bg background removal: TankView_Assets/raw → cle
 #   add `-- --dry-run` to any asset script to preview without spending credits
 ```
 
-No automated test runner is wired yet. **TODO:** add a tiny node/vitest harness
-for the pure sim (Phase 2 acceptance criteria require sim tests).
+Tests live in top-level `tests/` (kept out of the `src` tsconfig include so the
+shippable build stays focused); they import from `vitest` explicitly. `npm test`
+runs the pure-sim + data suites.
 
 ---
 
@@ -166,13 +169,14 @@ for the pure sim (Phase 2 acceptance criteria require sim tests).
 src/
   main.ts app.ts styles.css vite-env.d.ts
   core/    rng.ts state.ts sim.ts save.ts   (TODO: economy.ts events.ts)
-  data/    assets.ts species.ts plants.ts hardscape.ts tanks.ts water.ts
+  data/    assets.ts species.ts aquaticCodex.ts plants.ts hardscape.ts tanks.ts water.ts
            (TODO: equipment.ts research.ts rescueCases.ts)
   render/  assetLoader.ts canvasRenderer.ts tankScene.ts layers.ts effects.ts
            (TODO: particles.ts creatureAnimation.ts split-outs)
   ui/      controller.ts topBar.ts sidePanels.ts bottomActions.ts screens.ts
            layout.ts icons.ts   (TODO: cards.ts habitatEditor.ts)
   utils/   math.ts dom.ts        (TODO: color.ts)
+tests/     rng.test.ts sim.test.ts save.test.ts codex.test.ts   (vitest)
 tools/     generate-openai-asset.mjs  edit-asset-with-fal.mjs  remove-backgrounds.mjs
 public/assets/  room/ tank/ hardscape/ plants/ creatures/   (27 integrated assets)
 docs/      production/  decisions/
@@ -248,6 +252,7 @@ Companion docs to keep current:
 
 ## Current Status — 2026-06-29
 
+- ✅ Git initialized; verified state committed as a checkpoint.
 - ✅ Phase 0 setup (Vite/TS/structure, `.gitignore`, `.env.example`, asset
   tools) — formalized this session with CLAUDE.md + production docs.
 - ✅ Phase 1 main aquarium screen — cozy room, wooden stand, procedural glass
@@ -258,13 +263,12 @@ Companion docs to keep current:
 - ✅ Phase 2 core sim — deterministic nitrogen cycle (ammonia→nitrite→nitrate),
   feeding/waste, filtration/plant export, water change; verified live (overfeed
   raised ammonia, water change cut nitrate/ammonia, leaves deducted).
-- 🔄 Phase 3 polish (in progress): **glossier glass** (procedural sheen +
-  drifting pane reflections + brighter water + wet rims, glass overlay alpha
-  0.22→0.30, time-animated) and **better creature animation** (eased turn/face
-  scaling, speed-scaled body wiggle, feeding rise). Code complete, typecheck +
-  build clean → **verifying with Playwright**.
-- ⏳ Not started: automated sim tests, Decorate/habitat editor (Phase 4),
-  collection/shop/add-species (Phase 5), breeding/morphs (Phase 6), rescue
-  (Phase 7), eco-center hub (Phase 8), more habitats (Phase 9), audio/QA polish
-  (Phase 10). Also: mine the `04_docs` `.docx` stats into `src/data`.
-- **Not a git repo yet** — consider `git init` for safe checkpoints.
+- ✅ Phase 3 gloss + animation pass — Playwright-verified glossy glass + live
+  creature motion.
+- ✅ Phase 2 foundation closed out: **vitest harness, 33 tests passing**;
+  `resetSimState()` determinism fix; **22-species `aquaticCodex.ts`** mined from
+  the stats bible with `species.ts` deriving from it (consistency tested).
+- ⏳ Not started: Decorate/habitat editor (Phase 4), collection/shop/add-species
+  (Phase 5), breeding/morphs (Phase 6), rescue (Phase 7), eco-center hub
+  (Phase 8), more habitats (Phase 9), audio/QA polish (Phase 10). Remaining data:
+  mine plant/hardscape (and later land-animal) stats from the second `.docx`.

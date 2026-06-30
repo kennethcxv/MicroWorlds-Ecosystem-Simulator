@@ -1,5 +1,12 @@
 /**
- * Species catalogue — data-driven so new creatures can be added later.
+ * Renderable species catalogue — the subset of the codex that currently has
+ * real PNG art and is instantiated inside the tank.
+ *
+ * Descriptive fields (name, latin, rarity, temperature, diet) are DERIVED from
+ * the authoritative `AQUATIC_CODEX` (mined from the stats bible) so there is one
+ * source of truth. Each entry only specifies its tuned on-screen render/sim
+ * values: sprite asset, behavior, on-screen size, swim zone/speed, the
+ * sim-balance bioload coefficient, and a flavour blurb.
  *
  * `trim` is the tight alpha content box of each source sprite (normalized to
  * the image), pre-measured from the PNGs. The renderer uses it to size and
@@ -8,6 +15,7 @@
  *
  * All sprites face LEFT (head at the left). The renderer flips for rightward swim.
  */
+import { AQUATIC_CODEX } from "./aquaticCodex";
 
 export type Rarity = "Common" | "Uncommon" | "Rare" | "Legendary";
 
@@ -48,194 +56,165 @@ export interface Species {
   tint?: number;
 }
 
+/** Tuned render/sim values for a renderable species; descriptive fields come from the codex. */
+interface RenderSpec {
+  type: CreatureType;
+  asset: string;
+  behavior: Behavior;
+  sizeFrac: number;
+  zone: [number, number];
+  speed: number;
+  /** Sim-balance waste coefficient (NOT the codex's 1–7 design scale). */
+  bioload: number;
+  blurb: string;
+  tint?: number;
+}
+
+/** Build a renderable Species: descriptive fields from the codex, render fields from `spec`. */
+function renderable(id: string, spec: RenderSpec): Species {
+  const c = AQUATIC_CODEX[id];
+  if (!c) throw new Error(`species '${id}' has no entry in AQUATIC_CODEX`);
+  return {
+    id,
+    name: c.common,
+    latin: c.scientific,
+    type: spec.type,
+    rarity: c.rarity,
+    asset: spec.asset,
+    behavior: spec.behavior,
+    sizeFrac: spec.sizeFrac,
+    zone: spec.zone,
+    speed: spec.speed,
+    bioload: spec.bioload,
+    tempRange: c.tempC,
+    diet: c.diet,
+    blurb: spec.blurb,
+    tint: spec.tint,
+  };
+}
+
 export const SPECIES: Record<string, Species> = {
-  harlequin_rasbora: {
-    id: "harlequin_rasbora",
-    name: "Harlequin Rasbora",
-    latin: "Trigonostigma heteromorpha",
+  harlequin_rasbora: renderable("harlequin_rasbora", {
     type: "fish",
-    rarity: "Common",
     asset: "harlequin_rasbora",
     behavior: "school",
     sizeFrac: 0.058,
     zone: [0.24, 0.52],
     speed: 0.16,
     bioload: 1.0,
-    tempRange: [22, 27],
-    diet: "Omnivore",
     blurb: "A peaceful, shimmering shoaler with a signature black 'pork-chop' wedge.",
     tint: 0.6,
-  },
-  celestial_pearl_danio: {
-    id: "celestial_pearl_danio",
-    name: "Celestial Pearl Danio",
-    latin: "Danio margaritatus",
+  }),
+  celestial_pearl_danio: renderable("celestial_pearl_danio", {
     type: "fish",
-    rarity: "Uncommon",
     asset: "celestial_pearl_danio",
     behavior: "school",
     sizeFrac: 0.045,
     zone: [0.4, 0.66],
     speed: 0.14,
     bioload: 0.8,
-    tempRange: [20, 26],
-    diet: "Micro-predator",
     blurb: "Tiny galaxy-spotted jewels that drift in loose, sparkling clouds.",
     tint: 0.55,
-  },
-  dwarf_gourami: {
-    id: "dwarf_gourami",
-    name: "Dwarf Gourami",
-    latin: "Trichogaster lalius",
+  }),
+  dwarf_gourami: renderable("dwarf_gourami", {
     type: "fish",
-    rarity: "Uncommon",
     asset: "dwarf_gourami",
     behavior: "centerpiece",
     sizeFrac: 0.13,
     zone: [0.3, 0.58],
     speed: 0.072,
     bioload: 2.4,
-    tempRange: [24, 28],
-    diet: "Omnivore",
     blurb: "A jewel-toned centrepiece that cruises the mid-water with calm confidence.",
     tint: 0.5,
-  },
-  panda_cory: {
-    id: "panda_cory",
-    name: "Panda Corydoras",
-    latin: "Corydoras panda",
+  }),
+  panda_cory: renderable("panda_cory", {
     type: "fish",
-    rarity: "Common",
     asset: "panda_cory",
     behavior: "bottom",
     sizeFrac: 0.07,
     zone: [0.84, 0.97],
     speed: 0.1,
     bioload: 1.3,
-    tempRange: [20, 25],
-    diet: "Bottom forager",
     blurb: "Busy little catfish that snuffle along the substrate in cheerful gangs.",
     tint: 0.7,
-  },
-  cherry_shrimp: {
-    id: "cherry_shrimp",
-    name: "Cherry Shrimp",
-    latin: "Neocaridina davidi",
+  }),
+  cherry_shrimp: renderable("cherry_shrimp", {
     type: "shrimp",
-    rarity: "Common",
     asset: "cherry_shrimp",
     behavior: "grazer",
     sizeFrac: 0.034,
     zone: [0.82, 0.98],
     speed: 0.04,
     bioload: 0.18,
-    tempRange: [20, 28],
-    diet: "Algae / detritus",
     blurb: "Ruby-red cleanup crew that grazes biofilm from every surface.",
     tint: 0.55,
-  },
-  amano_shrimp: {
-    id: "amano_shrimp",
-    name: "Amano Shrimp",
-    latin: "Caridina multidentata",
+  }),
+  amano_shrimp: renderable("amano_shrimp", {
     type: "shrimp",
-    rarity: "Uncommon",
     asset: "amano_shrimp",
     behavior: "grazer",
     sizeFrac: 0.05,
     zone: [0.82, 0.98],
     speed: 0.05,
     bioload: 0.22,
-    tempRange: [18, 27],
-    diet: "Algae / detritus",
     blurb: "The legendary algae-eater — tireless, translucent, and endlessly busy.",
     tint: 0.5,
-  },
-  nerite_snail: {
-    id: "nerite_snail",
-    name: "Nerite Snail",
-    latin: "Neritina natalensis",
+  }),
+  nerite_snail: renderable("nerite_snail", {
     type: "snail",
-    rarity: "Common",
     asset: "nerite_snail",
     behavior: "grazer",
     sizeFrac: 0.038,
     zone: [0.8, 0.98],
     speed: 0.012,
     bioload: 0.1,
-    tempRange: [20, 28],
-    diet: "Algae",
     blurb: "Patterned grazers that polish glass and rock without breeding in freshwater.",
     tint: 0.4,
-  },
-  mystery_snail: {
-    id: "mystery_snail",
-    name: "Mystery Snail",
-    latin: "Pomacea bridgesii",
+  }),
+  mystery_snail: renderable("mystery_snail", {
     type: "snail",
-    rarity: "Common",
     asset: "mystery_snail",
     behavior: "grazer",
     sizeFrac: 0.06,
     zone: [0.8, 0.98],
     speed: 0.014,
     bioload: 0.16,
-    tempRange: [20, 28],
-    diet: "Detritus",
     blurb: "Gentle giants of the snail world, trundling about on leisurely patrols.",
     tint: 0.4,
-  },
-  betta: {
-    id: "betta",
-    name: "Betta",
-    latin: "Betta splendens",
+  }),
+  betta: renderable("betta", {
     type: "fish",
-    rarity: "Rare",
     asset: "betta",
     behavior: "centerpiece",
     sizeFrac: 0.12,
     zone: [0.28, 0.6],
     speed: 0.06,
     bioload: 2.0,
-    tempRange: [25, 28],
-    diet: "Carnivore",
     blurb: "A flowing-finned individualist; stunning, intelligent, and a little vain.",
     tint: 0.45,
-  },
-  guppy: {
-    id: "guppy",
-    name: "Guppy",
-    latin: "Poecilia reticulata",
+  }),
+  guppy: renderable("guppy", {
     type: "fish",
-    rarity: "Common",
     asset: "guppy",
     behavior: "mid",
     sizeFrac: 0.055,
     zone: [0.3, 0.62],
     speed: 0.13,
     bioload: 1.1,
-    tempRange: [22, 28],
-    diet: "Omnivore",
     blurb: "Endlessly colourful livebearers that fill a tank with darting motion.",
     tint: 0.55,
-  },
-  platy: {
-    id: "platy",
-    name: "Platy",
-    latin: "Xiphophorus maculatus",
+  }),
+  platy: renderable("platy", {
     type: "fish",
-    rarity: "Common",
     asset: "platy",
     behavior: "mid",
     sizeFrac: 0.062,
     zone: [0.32, 0.6],
     speed: 0.11,
     bioload: 1.4,
-    tempRange: [22, 28],
-    diet: "Omnivore",
     blurb: "Hardy, sociable, and always hungry — a perfect first community fish.",
     tint: 0.55,
-  },
+  }),
 };
 
 /** Pre-measured tight content boxes for each creature sprite (image-normalized). */

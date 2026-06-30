@@ -14,9 +14,10 @@ meets its acceptance bar. **Do not scope-drift.**
 - [ ] Plant sway, day/night lighting grade pass.
 
 ## Next (close out Phase 2 hygiene)
-- [ ] Add a minimal test harness (node/vitest) for the **pure sim**: feeding,
-      waste, ammonia, water change, stress/health, save/load round-trip,
-      deterministic RNG. (Phase 2 acceptance criteria.)
+- [x] Minimal test harness (**vitest**) for the pure sim: feeding, waste,
+      ammonia, water change, stress/health, save/load round-trip, deterministic
+      RNG. → `npm test`, 33 tests passing. (Phase 2 acceptance criteria.)
+- [x] `resetSimState()` so reset/new games are reproducible from seed.
 - [ ] Add `src/core/economy.ts` + `events.ts` (currency, events) as the loop
       deepens.
 
@@ -53,9 +54,11 @@ meets its acceptance bar. **Do not scope-drift.**
       (reduced motion, UI scale), save robustness, perf + build checks.
 
 ## Cross-cutting data work
-- [ ] Mine `04_docs/GLASSWATER_Fish_and_Aquatic_Species_Stats.docx` and
-      `..._Land_Animals_Plants_Hardscape_Stats.docx` into `src/data/*` as the
-      authoritative content source.
+- [x] Mine `GLASSWATER_Fish_and_Aquatic_Species_Stats.docx` → `aquaticCodex.ts`
+      (22 species, authoritative). `species.ts` derives from it.
+- [ ] Mine the Plant Library (§8) + Hardscape (§10) core data from
+      `..._Land_Animals_Plants_Hardscape_Stats.docx` (aquatic-relevant rows).
+- [ ] Mine Land Animal species (§5) when Phase 9 land habitats begin.
 
 ## Housekeeping
 - [ ] `git init` for safe checkpoints (folder is not a repo yet).

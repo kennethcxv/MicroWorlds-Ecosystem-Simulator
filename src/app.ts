@@ -3,7 +3,7 @@
  * runs the main loop (sim → render → throttled UI refresh → autosave).
  */
 import { type GameState, type ScreenId, createInitialState } from "./core/state";
-import { simStep, doAction } from "./core/sim";
+import { simStep, doAction, resetSimState } from "./core/sim";
 import { loadGame, saveGame, clearSave } from "./core/save";
 import { CanvasRenderer } from "./render/canvasRenderer";
 import { createLayout, type GameLayout } from "./ui/layout";
@@ -111,6 +111,7 @@ export class GlasswaterApp {
 
   private reset(): void {
     clearSave();
+    resetSimState(); // fresh RNG stream + clear stale warnings so the new game is reproducible
     this.state = createInitialState();
     this.navigate("aquarium");
     this.layout.toast("Started a fresh eco-center.", "info");

@@ -53,6 +53,17 @@ function getRng(state: GameState): RNG {
   return rng;
 }
 
+/**
+ * Reset ephemeral, non-persisted sim caches: the RNG stream and the warning
+ * debounce flags. Call this whenever a fresh game starts (new game / reset) so
+ * the simulation is reproducible from its seed and doesn't carry stale warnings.
+ */
+export function resetSimState(): void {
+  rng = null;
+  rngSeed = -1;
+  warnState.clear();
+}
+
 /** Ephemeral, non-saved debounce flags so warnings don't spam the log. */
 const warnState = new Map<string, Record<string, boolean>>();
 function warnFlags(tankId: string): Record<string, boolean> {

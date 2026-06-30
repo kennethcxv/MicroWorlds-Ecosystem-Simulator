@@ -18,6 +18,39 @@ docs), finish the in-flight polish, and continue down the phase roadmap.
 prompt. "Build from scratch" is interpreted as "build to the spec's quality
 bar," not "rm -rf and restart."
 
+## 2026-06-29 — vitest for the test harness; tests live outside `src`
+**Context:** Phase 2 acceptance requires the pure sim to be tested. The project
+is Vite-based.
+**Decision:** Use **vitest** (Vite-native, zero-config). Tests live in top-level
+`tests/`, kept out of the `src` tsconfig include so `tsc`/`vite build` stay
+focused on shippable code; tests import `{describe,it,expect}` from `vitest`
+explicitly (no global types needed). A small in-memory `localStorage` polyfill
+covers `save.ts` under Node.
+**Consequences:** `npm test` runs 33 tests (rng/sim/save/codex). Vitest adds
+dev-only transitive deps (audit warnings are dev-only, not shipped).
+
+## 2026-06-29 — `resetSimState()` for seed-reproducible new games
+**Context:** `sim.ts` caches the RNG as a module singleton keyed by seed and
+holds a `warnState` map; the app's `reset()` made a fresh state but never cleared
+these, so a reset game inherited the old RNG position + stale warnings.
+**Decision:** Add `resetSimState()` (nulls the RNG cache, clears `warnState`) and
+call it from `reset()`. Tests call it in `beforeEach` for isolation.
+**Consequences:** New/reset games are reproducible from seed; determinism is
+testable. Purely additive — no change to a normal continuous session.
+
+## 2026-06-29 — Aquatic codex is the source of truth; species.ts derives from it
+**Context:** `04_docs` ships an authoritative stats bible (a JSON array of 22
+aquatic species). The hand-written `species.ts` had drifted (e.g. betta rarity).
+**Decision:** Generate `src/data/aquaticCodex.ts` from the docx JSON
+(programmatically, to avoid transcription error). It is the single source for
+taxonomy/care/rarity/temp/pH/1–7 scales/render direction. The renderable
+`species.ts` subset derives name/latin/rarity/temp/diet from the codex and keeps
+only its tuned on-screen size/zone/speed + the sim-balance **bioload coefficient**
+(deliberately NOT the codex's 1–7 "Bio" scale, to preserve the verified
+nitrogen-cycle balance). A consistency test enforces the link.
+**Consequences:** One source of truth, no drift; the full 22-species roster is
+ready for the Phase 5 shop/collection. Regenerate (don't hand-edit) the codex.
+
 ## 2026-06-29 — Glass gloss: procedural front + photo overlay, time-animated
 **Context:** User feedback — "looks too matte, make it more glossy."
 **Decision:** Keep the hybrid glass (procedural `paintGlassFront` + real
