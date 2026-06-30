@@ -145,7 +145,7 @@ function makeSapphireStream(): Tank {
     populations: [
       { speciesId: "harlequin_rasbora", count: 12, health: 0.95 },
       { speciesId: "celestial_pearl_danio", count: 8, health: 0.95 },
-      { speciesId: "dwarf_gourami", count: 1, health: 0.96 },
+      { speciesId: "betta", count: 1, health: 0.96 },
       { speciesId: "cherry_shrimp", count: 18, health: 0.92 },
       { speciesId: "panda_cory", count: 6, health: 0.94 },
       { speciesId: "nerite_snail", count: 4, health: 0.95 },

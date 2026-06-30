@@ -98,7 +98,7 @@ export const SPECIES: Record<string, Species> = {
     type: "fish",
     asset: "harlequin_rasbora",
     behavior: "school",
-    sizeFrac: 0.058,
+    sizeFrac: 0.075,
     zone: [0.24, 0.52],
     speed: 0.16,
     bioload: 1.0,
@@ -131,7 +131,7 @@ export const SPECIES: Record<string, Species> = {
     type: "fish",
     asset: "panda_cory",
     behavior: "bottom",
-    sizeFrac: 0.07,
+    sizeFrac: 0.09,
     zone: [0.84, 0.97],
     speed: 0.1,
     bioload: 1.3,
@@ -186,7 +186,7 @@ export const SPECIES: Record<string, Species> = {
     type: "fish",
     asset: "betta",
     behavior: "centerpiece",
-    sizeFrac: 0.12,
+    sizeFrac: 0.17,
     zone: [0.28, 0.6],
     speed: 0.06,
     bioload: 2.0,
@@ -197,7 +197,7 @@ export const SPECIES: Record<string, Species> = {
     type: "fish",
     asset: "guppy",
     behavior: "mid",
-    sizeFrac: 0.055,
+    sizeFrac: 0.085,
     zone: [0.3, 0.62],
     speed: 0.13,
     bioload: 1.1,
@@ -208,7 +208,7 @@ export const SPECIES: Record<string, Species> = {
     type: "fish",
     asset: "platy",
     behavior: "mid",
-    sizeFrac: 0.062,
+    sizeFrac: 0.085,
     zone: [0.32, 0.6],
     speed: 0.11,
     bioload: 1.4,
@@ -217,19 +217,23 @@ export const SPECIES: Record<string, Species> = {
   }),
 };
 
-/** Pre-measured tight content boxes for each creature sprite (image-normalized). */
+/**
+ * Pre-measured tight content boxes for each creature sprite (image-normalized).
+ * The upscaled fish (harlequin_rasbora, panda_cory, guppy, platy, betta) were
+ * cropped to their alpha bounds, so their content box is the full frame.
+ */
 export const CREATURE_TRIM: Record<string, TrimBox> = {
-  harlequin_rasbora: { x: 0.0829, y: 0.2192, w: 0.8494, h: 0.5083 },
+  harlequin_rasbora: { x: 0, y: 0, w: 1, h: 1 },
   celestial_pearl_danio: { x: 0.0884, y: 0.2505, w: 0.8287, h: 0.442 },
   dwarf_gourami: { x: 0.1464, y: 0.1621, w: 0.7362, h: 0.6906 },
-  panda_cory: { x: 0.1036, y: 0.1934, w: 0.8094, h: 0.5709 },
+  panda_cory: { x: 0, y: 0, w: 1, h: 1 },
   cherry_shrimp: { x: 0.0159, y: 0.1722, w: 0.9729, h: 0.563 },
   amano_shrimp: { x: 0.0064, y: 0.1786, w: 0.9809, h: 0.5407 },
   nerite_snail: { x: 0.1148, y: 0.1611, w: 0.7815, h: 0.6348 },
   mystery_snail: { x: 0.0925, y: 0.1627, w: 0.8644, h: 0.6523 },
-  betta: { x: 0.1008, y: 0.1215, w: 0.797, h: 0.744 },
-  guppy: { x: 0.1188, y: 0.256, w: 0.7721, h: 0.5064 },
-  platy: { x: 0.1229, y: 0.2118, w: 0.8108, h: 0.5433 },
+  betta: { x: 0, y: 0, w: 1, h: 1 },
+  guppy: { x: 0, y: 0, w: 1, h: 1 },
+  platy: { x: 0, y: 0, w: 1, h: 1 },
 };
 
 export const RARITY_COLORS: Record<Rarity, string> = {

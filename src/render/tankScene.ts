@@ -20,8 +20,10 @@ import {
   paintGodRays,
   paintCaustics,
   paintSurface,
+  type SpritePlacement,
 } from "./effects";
 import { SPECIES, CREATURE_TRIM, type Species, type Behavior } from "../data/species";
+import { swimProfile, type SwimProfile } from "../data/swim";
 import { PLANTS } from "../data/plants";
 import { HARDSCAPE } from "../data/hardscape";
 import { ASSETS, SCENE_TRIM } from "../data/assets";
@@ -30,27 +32,39 @@ import { clamp, clamp01 } from "../utils/math";
 
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 
+type SwimState = "hover" | "cruise" | "dart";
+
 interface Agent {
   species: Species;
   behavior: Behavior;
+  prof: SwimProfile;
   x: number; // interior-normalized 0..1
-  y: number; // interior-normalized 0..1 (midwater) or hover offset (bottom)
-  z: number; // depth 0..1
+  y: number; // interior-normalized 0..1
+  z: number; // depth 0..1 (0 back wall, 1 front glass)
   vx: number;
   vy: number;
-  dir: number; // +1 right, -1 left (intended heading)
-  face: number; // signed horizontal scale, eases toward heading (turn animation)
-  pitch: number; // eased nose tilt toward travel direction (up/down)
-  phase: number;
-  wig: number; // wiggle speed
-  offX: number; // school offset
+  /** Eased signed horizontal scale (sprites face left; -1 mirrors to face right). */
+  face: number;
+  /** Target facing sign with hysteresis so it doesn't flip-flop at vx≈0. */
+  faceDir: number;
+  /** Eased nose pitch toward travel direction. */
+  pitch: number;
+  /** Smoothed body-curve signal for turns/banking. */
+  bend: number;
+  /** Travelling tail-wave phase. */
+  tailPhase: number;
+  state: SwimState;
+  stateT: number; // seconds left in the current state
+  speedWob: number; // phase for gentle cruise-speed variation
+  // Personal offsets / targets.
+  offX: number;
   offY: number;
-  offZ: number; // school depth offset (front-back spread within the shoal)
-  tz: number; // wandering target depth (non-school swimmers)
-  pause: number; // dart pause timer
-  bobAmp: number;
-  bobSpeed: number;
-  seed: number;
+  offZ: number;
+  wpX: number; // wander waypoint (non-school)
+  wpY: number;
+  wpT: number; // seconds left before re-picking a waypoint
+  zTarget: number;
+  zWander: number;
 }
 
 interface SchoolCenter {
@@ -134,43 +148,35 @@ export class TankScene {
   }
 
   private newAgent(species: Species): Agent {
+    const prof = swimProfile(species);
+    const z = rand(prof.depth[0], prof.depth[1]);
     const zoneT = rand(species.zone[0], species.zone[1]);
-    let z: number;
-    switch (species.behavior) {
-      case "centerpiece":
-        z = rand(0.5, 0.82);
-        break;
-      case "bottom":
-        z = rand(0.45, 0.95);
-        break;
-      case "grazer":
-        z = rand(0.55, 0.98);
-        break;
-      default:
-        z = rand(0.25, 0.7);
-    }
-    const dir0 = Math.random() < 0.5 ? 1 : -1;
+    const dir0 = Math.random() < 0.5 ? -1 : 1; // -1 face right, +1 face left
     return {
       species,
       behavior: species.behavior,
-      x: rand(0.1, 0.9),
+      prof,
+      x: rand(0.12, 0.88),
       y: zoneT,
       z,
-      vx: rand(-1, 1) * species.speed,
+      vx: -dir0 * species.speed * 0.5, // dir0 +1(left) → vx negative(left)
       vy: 0,
-      dir: dir0,
-      face: dir0 > 0 ? -1 : 1, // sprites face left; -1 mirrors to face right
+      face: dir0,
+      faceDir: dir0,
       pitch: 0,
-      phase: rand(0, Math.PI * 2),
-      wig: rand(7, 11) * (species.type === "fish" ? 1 : 0.2),
+      bend: 0,
+      tailPhase: rand(0, Math.PI * 2),
+      state: "cruise",
+      stateT: rand(1, 4),
+      speedWob: rand(0, Math.PI * 2),
       offX: rand(-0.12, 0.12),
-      offY: rand(-0.06, 0.06),
-      offZ: species.type === "fish" ? rand(-0.14, 0.14) : rand(-0.05, 0.05),
-      tz: z,
-      pause: rand(0, 2),
-      bobAmp: species.type === "fish" ? rand(0.004, 0.012) : 0.002,
-      bobSpeed: rand(0.6, 1.4),
-      seed: rand(0, 100),
+      offY: rand(-0.07, 0.07),
+      offZ: species.type === "fish" ? rand(-0.16, 0.16) : rand(-0.05, 0.05),
+      wpX: rand(0.2, 0.8),
+      wpY: zoneT,
+      wpT: rand(2, 5),
+      zTarget: z,
+      zWander: rand(3, 8),
     };
   }
 
@@ -229,83 +235,130 @@ export class TankScene {
   }
 
   private updateAgent(a: Agent, dt: number, excite: number): void {
-    const isFish = a.species.type === "fish";
-    // Tail-beat frequency rises with effort (speed) and excitement.
-    const sf = clamp(Math.hypot(a.vx, a.vy) / (a.species.speed + 1e-4), 0, 2.2);
-    a.phase += dt * a.wig * (0.55 + sf * 0.7 + excite * 0.5);
-    const sp = a.species.speed * (1 + excite * 0.6);
+    if (a.behavior === "grazer") this.updateGrazer(a, dt);
+    else this.updateFish(a, dt, excite);
+  }
 
-    if (a.behavior === "school" || a.behavior === "mid") {
-      const s = this.schools.get(a.species.id);
-      const tx = s ? s.x + a.offX : a.x;
-      // When fed, the shoal surges up toward the food at the surface.
-      const ty = clamp((s ? s.y + a.offY : a.y) - excite * 0.22, a.species.zone[0] - 0.05, a.species.zone[1]);
-      // Each fish holds its own depth within the shoal's slab → real front-back spread.
-      const tz = clamp((s ? s.z : a.z) + a.offZ, 0.08, 0.95);
-      a.vx += (tx - a.x) * dt * 1.5 + rand(-0.02, 0.02) * dt;
-      a.vy += (ty - a.y) * dt * 1.6;
-      a.z += (tz - a.z) * dt * 0.9;
-      this.limitSpeed(a, sp);
-    } else if (a.behavior === "centerpiece") {
-      a.pause -= dt;
-      if (a.pause <= 0) {
-        a.vx = rand(-1, 1) * sp;
-        a.vy = rand(-0.3, 0.3) * sp;
-        a.tz = rand(0.46, 0.86); // pick a new depth lane to cruise toward
-        a.pause = rand(2.5, 5.5);
+  /** Real fish swimming: idle/cruise/dart state machine + smooth steering. */
+  private updateFish(a: Agent, dt: number, excite: number): void {
+    const p = a.prof;
+    const [zoneTop, zoneBot] = a.species.zone;
+    const school =
+      a.behavior === "school" || a.behavior === "mid" ? this.schools.get(a.species.id) : undefined;
+
+    // ── State machine: cruise ↔ hover, occasional dart ──────────────────────
+    a.stateT -= dt;
+    if (a.stateT <= 0) {
+      const r = Math.random();
+      if (r < p.dartChance * 6) {
+        a.state = "dart";
+        a.stateT = rand(0.4, 0.9);
+      } else if (r < p.dartChance * 6 + p.hover) {
+        a.state = "hover";
+        a.stateT = rand(1.4, 3.4);
+      } else {
+        a.state = "cruise";
+        a.stateT = rand(2.5, 6);
       }
-      // Drift up toward food when fed.
-      if (excite > 0.3) a.vy -= excite * dt * 0.35;
-      a.vx *= 1 - dt * 0.4;
-      a.vy *= 1 - dt * 0.6;
-      a.z += (a.tz - a.z) * dt * 0.5; // glide forward/back between lanes
-      a.y = clamp(a.y, a.species.zone[0] - excite * 0.12, a.species.zone[1]);
+    }
+    // Feeding triggers staggered darts (not every fish at once).
+    if (excite > 0.35 && a.state !== "dart" && Math.random() < excite * dt * 1.4) {
+      a.state = "dart";
+      a.stateT = rand(0.4, 0.8);
+    }
+
+    // ── Where does it want to be? ───────────────────────────────────────────
+    let tx: number;
+    let ty: number;
+    if (school) {
+      tx = school.x + a.offX;
+      ty = clamp(school.y + a.offY - excite * 0.22, zoneTop - 0.05, zoneBot);
     } else {
-      // bottom (cory) + grazer (shrimp / snail): hug the substrate, amble in depth.
-      a.pause -= dt;
-      if (a.pause <= 0) {
-        a.vx = (Math.random() < 0.5 ? -1 : 1) * sp * (a.behavior === "bottom" ? rand(0.6, 1.4) : rand(0.4, 1));
-        a.tz = rand(0.5, 0.97);
-        a.pause = a.behavior === "bottom" ? rand(0.6, 2.2) : rand(2, 6);
+      a.wpT -= dt;
+      const near = Math.hypot(a.wpX - a.x, a.wpY - a.y) < 0.08;
+      if (a.wpT <= 0 || near) {
+        a.wpX = rand(0.15, 0.85);
+        a.wpY = clamp(rand(zoneTop, zoneBot) - excite * 0.2, zoneTop, zoneBot);
+        a.wpT = rand(2.5, 6);
       }
-      if (a.behavior !== "bottom") a.vx *= 1 - dt * 0.2;
-      a.z += (a.tz - a.z) * dt * (a.behavior === "bottom" ? 0.5 : 0.3);
-      a.vy = 0;
+      tx = a.wpX;
+      ty = a.wpY;
     }
 
-    a.x += a.vx * dt;
-    a.y += a.vy * dt;
+    // ── Desired velocity toward the target, scaled by state ─────────────────
+    a.speedWob += dt * 1.3;
+    const cruise = p.cruise * (0.85 + 0.15 * Math.sin(a.speedWob));
+    const stateMul = a.state === "dart" ? 2.6 : a.state === "hover" ? 0.16 : 1;
+    const dx = tx - a.x;
+    const dy = ty - a.y;
+    const dist = Math.hypot(dx, dy) || 1e-4;
+    const arrive = dist < 0.12 ? dist / 0.12 : 1; // ease off near the target
+    let desVx = (dx / dist) * cruise * stateMul * arrive;
+    let desVy = (dy / dist) * cruise * stateMul * arrive * 0.85;
 
-    // Keep inside the interior; steer/bounce off edges.
-    if (a.x < 0.04) {
-      a.x = 0.04;
-      a.vx = Math.abs(a.vx);
-    } else if (a.x > 0.96) {
-      a.x = 0.96;
-      a.vx = -Math.abs(a.vx);
+    // Edge avoidance — steer inward before hitting a wall (no hard bounce).
+    const m = 0.09;
+    if (a.x < m) desVx += ((m - a.x) / m) * cruise * 1.6;
+    else if (a.x > 1 - m) desVx -= ((a.x - (1 - m)) / m) * cruise * 1.6;
+    if (a.y < zoneTop + 0.04) desVy += cruise * 0.7;
+    else if (a.y > zoneBot - 0.04) desVy -= cruise * 0.7;
+
+    // Steer current velocity toward desired (accel-limited → smooth curved path).
+    const steer = p.turn * (a.state === "dart" ? 1.7 : 1);
+    a.vx += (desVx - a.vx) * Math.min(1, steer * dt);
+    a.vy += (desVy - a.vy) * Math.min(1, steer * dt);
+    this.limitSpeed(a, cruise * stateMul * 1.25 + 1e-3);
+
+    a.x = clamp(a.x + a.vx * dt, 0.03, 0.97);
+    a.y = clamp(a.y + a.vy * dt, zoneTop - 0.03, zoneBot + 0.03);
+
+    // ── Depth: ease toward shoal depth or a slowly wandering personal lane ───
+    a.zWander -= dt;
+    if (a.zWander <= 0) {
+      a.zTarget = rand(p.depth[0], p.depth[1]);
+      a.zWander = rand(4, 9);
     }
-    const [zt, zb] = a.species.zone;
-    if (a.behavior === "school" || a.behavior === "mid" || a.behavior === "centerpiece") {
-      if (a.y < zt) {
-        a.y = zt;
-        a.vy = Math.abs(a.vy);
-      } else if (a.y > zb) {
-        a.y = zb;
-        a.vy = -Math.abs(a.vy);
-      }
+    const zt = school ? clamp(school.z + a.offZ, 0.06, 0.96) : a.zTarget;
+    a.z = clamp(a.z + (zt - a.z) * Math.min(1, dt * 0.5), 0.05, 0.98);
+
+    // ── Orientation: facing (with hysteresis), pitch, body bend ─────────────
+    if (Math.abs(a.vx) > cruise * 0.22) a.faceDir = a.vx > 0 ? -1 : 1; // -1 = face right
+    a.face += (a.faceDir - a.face) * Math.min(1, dt * 4); // smooth turn-through
+
+    const pitchTarget = clamp(Math.atan2(a.vy, Math.abs(a.vx) + 0.05) * 0.5, -0.4, 0.4);
+    a.pitch += (pitchTarget - a.pitch) * Math.min(1, dt * 5);
+
+    // Body curves while turning (head leads, tail trails) and banks with vy.
+    const bendTarget = clamp((a.faceDir - a.face) * 0.7 + clamp(a.vy * 1.4, -0.5, 0.5), -1, 1);
+    a.bend += (bendTarget - a.bend) * Math.min(1, dt * 5);
+
+    // ── Tail beat: frequency rises with state + speed ───────────────────────
+    const sf = clamp(Math.hypot(a.vx, a.vy) / (p.cruise + 1e-4), 0, 2.5);
+    const freq = p.tailFreq * (a.state === "dart" ? 2.2 : a.state === "hover" ? 0.5 : 0.7 + 0.5 * sf);
+    a.tailPhase += dt * freq;
+  }
+
+  /** Shrimp/snails: short scoots and pauses near the substrate; no fish flex. */
+  private updateGrazer(a: Agent, dt: number): void {
+    const p = a.prof;
+    a.stateT -= dt;
+    if (a.stateT <= 0) {
+      a.vx = (Math.random() < 0.5 ? -1 : 1) * p.cruise * rand(0.4, 1);
+      a.stateT = rand(1.5, 5);
     }
-    a.z = clamp(a.z, 0.04, 0.99);
-    if (Math.abs(a.vx) > 0.002) a.dir = a.vx > 0 ? 1 : -1;
+    a.vx *= 1 - dt * 0.6;
+    a.x = clamp(a.x + a.vx * dt, 0.03, 0.97);
 
-    // Ease `face` toward the heading so the fish visibly turns (narrowing to an
-    // edge-on profile as it passes through zero) instead of instantly mirroring.
-    const faceTarget = a.dir > 0 ? -1 : 1;
-    a.face += (faceTarget - a.face) * Math.min(1, dt * 9);
+    a.zWander -= dt;
+    if (a.zWander <= 0) {
+      a.zTarget = rand(p.depth[0], p.depth[1]);
+      a.zWander = rand(4, 10);
+    }
+    a.z = clamp(a.z + (a.zTarget - a.z) * Math.min(1, dt * 0.3), 0.05, 0.98);
 
-    // Ease nose pitch toward the actual travel direction (up when rising, down
-    // when diving) so the fish points where it swims.
-    const pitchTarget = isFish ? clamp(Math.atan2(a.vy, Math.abs(a.vx) + 0.04) * 0.6, -0.5, 0.5) : 0;
-    a.pitch += (pitchTarget - a.pitch) * Math.min(1, dt * 6);
+    if (Math.abs(a.vx) > 0.002) a.faceDir = a.vx > 0 ? -1 : 1;
+    a.face += (a.faceDir - a.face) * Math.min(1, dt * 3);
+    a.tailPhase += dt * 2;
   }
 
   private limitSpeed(a: Agent, sp: number): void {
@@ -377,7 +430,7 @@ export class TankScene {
     items.sort((m, n) => (m.z === n.z ? m.baseY - n.baseY : m.z - n.z));
     for (const it of items) it.draw();
 
-    paintGodRays(ctx, layout, this.time, 0.72 + light * 0.6);
+    paintGodRays(ctx, layout, this.time, 0.4 + light * 0.4);
     this.drawParticles(ctx, this.front, 0.85);
     this.drawBubbles(ctx, layout);
 
@@ -501,29 +554,32 @@ export class TankScene {
     const contentW = a.species.sizeFrac * layout.interior.w * ds;
     const anchorX = perspX(layout, a.x, a.z);
     const onBottom = a.behavior === "bottom" || a.behavior === "grazer";
-    const bob = Math.sin(a.phase * a.bobSpeed) * a.bobAmp * layout.interior.h;
-    const baseY = onBottom
-      ? groundY(layout, a.z) - contentW * 0.12 + bob * 0.3
-      : waterY(layout, a.y) + bob;
+    const baseY = onBottom ? groundY(layout, a.z) - contentW * 0.1 : waterY(layout, a.y);
     const trim = CREATURE_TRIM[a.species.asset];
     const img = assets.get(ASSETS.creatures[a.species.asset as keyof typeof ASSETS.creatures]);
 
-    // The nose points where the fish is actually travelling (pitch is smoothed in
-    // updateAgent). `face` is the signed mirror; under a flip a positive rotation
-    // reads reversed, so compensate with faceSign to keep "nose up when rising".
+    // `face` is the eased signed mirror; under a flip a positive rotation reads
+    // reversed, so compensate with faceSign to keep "nose up when rising".
     const faceSign = a.face < 0 ? -1 : 1;
     const rot = faceSign * a.pitch;
+    // Keep a minimum visible width so a turning fish never collapses to a sliver.
+    const scaleX = faceSign * Math.max(0.3, Math.abs(a.face));
 
-    // Body undulation: a head→tail wave whose amplitude grows with swim effort,
-    // so the body flexes and the tail sweeps. Fish flex fully; shrimp flick a
-    // little; snails not at all.
-    const speedFrac = clamp(Math.hypot(a.vx, a.vy) / (a.species.speed + 1e-4), 0, 2);
-    // Only fish get the swim-flex warp (shrimp/snails crawl; the warp isn't worth
-    // its per-strip cost on the many tiny inverts).
-    const bend =
-      a.species.type === "fish"
-        ? { amp: contentW * (0.06 + 0.12 * speedFrac), phase: a.phase, waves: 3.0 }
-        : undefined;
+    // Fish body deformation (sliced swim flex); inverts swim flat.
+    const p = a.prof;
+    let deform: SpritePlacement["deform"];
+    if (a.species.type === "fish") {
+      const sf = clamp(Math.hypot(a.vx, a.vy) / (p.cruise + 1e-4), 0, 2.5);
+      const ampFrac = p.tailAmp * (a.state === "dart" ? 1.7 : a.state === "hover" ? 0.35 : 0.7 + 0.5 * sf);
+      deform = {
+        headLeft: true,
+        slices: 18,
+        ampFrac,
+        phase: a.tailPhase,
+        waveSpan: p.bodyFlex,
+        turnBendFrac: a.bend * 0.45,
+      };
+    }
 
     return {
       z: a.z,
@@ -539,11 +595,11 @@ export class TankScene {
           ctx,
           img,
           trim,
-          { anchorX, anchorY: baseY, contentW, anchorYFrac: 0.5, scaleX: a.face, rot, bend },
+          { anchorX, anchorY: baseY, contentW, anchorYFrac: 0.5, scaleX, rot, deform },
           {
             tint: (a.species.tint ?? 0.5) * 0.5,
-            haze: hazeAlpha(a.z) * 0.75,
-            light: 0.16 + a.z * 0.16,
+            haze: hazeAlpha(a.z) * 0.7,
+            light: 0.16 + a.z * 0.18,
           },
         );
       },

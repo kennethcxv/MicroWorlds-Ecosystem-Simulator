@@ -97,9 +97,10 @@ export function depthScale(z: number): number {
   return 0.8 + z * 0.34;
 }
 
-/** Teal haze strength for a depth — far things fade into the water. */
+/** Teal haze strength for a depth — far things fade into the water (kept light
+ *  so the tank reads clear; just enough to push back-wall things into depth). */
 export function hazeAlpha(z: number): number {
-  return 0.46 * (1 - z) + 0.05;
+  return 0.26 * (1 - z) + 0.03;
 }
 
 /** Y for a midwater creature given its zone band [top,bottom] (0..1) and a t. */

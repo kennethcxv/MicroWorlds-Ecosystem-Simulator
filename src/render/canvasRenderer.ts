@@ -15,7 +15,6 @@ import {
   paintGlassFront,
   paintColorGrade,
   drawContactShadow,
-  roundRectPath,
 } from "./effects";
 
 export class CanvasRenderer {
@@ -139,10 +138,8 @@ export class CanvasRenderer {
     //    inside the water. The procedural pass carries the glossiness instead.
     paintGlassFront(ctx, this.layout, this.elapsed);
 
-    // 6) Name plate on the stand.
-    this.drawNamePlate(ctx, tank.name);
-
-    // 7) Whole-frame colour grade + vignette.
+    // 6) Whole-frame colour grade + vignette. (The tank name lives in the left
+    //    panel; no canvas name plate floating over the scene.)
     paintColorGrade(ctx, this.cssW, this.cssH, this.layout);
   }
 
@@ -179,43 +176,4 @@ export class CanvasRenderer {
     drawContactShadow(ctx, tank.x + tank.w / 2, tank.y + tank.h + tank.h * 0.012, tank.w * 0.98, 0.4, 0.12);
   }
 
-  private drawNamePlate(ctx: CanvasRenderingContext2D, name: string): void {
-    const { tank, stand } = this.layout;
-    const w = Math.min(tank.w * 0.42, 320);
-    const h = Math.max(34, tank.h * 0.085);
-    const x = tank.x + tank.w / 2 - w / 2;
-    const y = stand.y + this.layout.tank.h * 0.012 + Math.min(stand.h * 0.08, 18);
-
-    ctx.save();
-    // Plaque.
-    ctx.shadowColor = "rgba(0,0,0,0.5)";
-    ctx.shadowBlur = 12;
-    ctx.shadowOffsetY = 3;
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, "rgba(10, 28, 32, 0.95)");
-    g.addColorStop(1, "rgba(6, 18, 22, 0.95)");
-    ctx.fillStyle = g;
-    roundRectPath(ctx, x, y, w, h, h * 0.32);
-    ctx.fill();
-    ctx.shadowColor = "transparent";
-    ctx.strokeStyle = "rgba(120, 200, 200, 0.4)";
-    ctx.lineWidth = 1.2;
-    roundRectPath(ctx, x + 0.5, y + 0.5, w - 1, h - 1, h * 0.32);
-    ctx.stroke();
-
-    // Leaf bullet.
-    ctx.fillStyle = "#7fd6a8";
-    ctx.beginPath();
-    ctx.ellipse(x + h * 0.55, y + h / 2, h * 0.16, h * 0.24, -0.7, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Name text.
-    ctx.fillStyle = "#cdeee6";
-    ctx.font = `600 ${Math.round(h * 0.4)}px Inter, system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = "2px";
-    ctx.fillText(name.toUpperCase(), x + w / 2 + h * 0.3, y + h / 2 + 1);
-    ctx.restore();
-  }
 }

@@ -169,10 +169,10 @@ runs the pure-sim + data suites.
 src/
   main.ts app.ts styles.css vite-env.d.ts
   core/    rng.ts state.ts sim.ts save.ts   (TODO: economy.ts events.ts)
-  data/    assets.ts species.ts aquaticCodex.ts plants.ts hardscape.ts tanks.ts water.ts
+  data/    assets.ts species.ts aquaticCodex.ts swim.ts plants.ts hardscape.ts tanks.ts water.ts
            (TODO: equipment.ts research.ts rescueCases.ts)
-  render/  assetLoader.ts canvasRenderer.ts tankScene.ts layers.ts effects.ts
-           (TODO: particles.ts creatureAnimation.ts split-outs)
+  render/  assetLoader.ts canvasRenderer.ts tankScene.ts layers.ts effects.ts fishDeformation.ts
+           (TODO: particles.ts split-outs)
   ui/      controller.ts topBar.ts sidePanels.ts bottomActions.ts screens.ts
            layout.ts icons.ts   (TODO: cards.ts habitatEditor.ts)
   utils/   math.ts dom.ts        (TODO: color.ts)
@@ -265,8 +265,12 @@ Companion docs to keep current:
   raised ammonia, water change cut nitrate/ammonia, leaves deducted).
 - ✅ Phase 3 gloss + animation pass — Playwright-verified glossy glass + live
   creature motion. Removed the `tank_glass.png` photo overlay (it stamped a
-  mismatched inner outline); added lifelike fish motion — front-back depth
-  swimming + body undulation + velocity pitch.
+  mismatched inner outline) and the floating name plate; cleared the water
+  (reduced depth-haze/caustics/god-rays).
+- ✅ Real fish swimming: **sliced sprite deformation** (`fishDeformation.ts`) +
+  per-species `swim.ts` profiles + idle/cruise/dart steering in `tankScene`
+  (body bend, tail swish, head-led smooth turns, feeding darts). Upscaled fish
+  art installed (betta centerpiece, rasbora, cory, guppy, platy).
 - ✅ Phase 2 foundation closed out: **vitest harness, 33 tests passing**;
   `resetSimState()` determinism fix; **22-species `aquaticCodex.ts`** mined from
   the stats bible with `species.ts` deriving from it (consistency tested).

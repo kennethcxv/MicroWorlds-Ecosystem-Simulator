@@ -69,8 +69,21 @@ _Last updated: 2026-06-29_
   only), velocity-aligned nose pitch, speed-scaled tail-beat; removed the old
   rigid wiggle. Playwright-verified (depth spread + clean undulation, no seams).
 
+## Phase 3 — real fish swimming + upscaled art ✅ (2026-06-29)
+- **Sliced-deformation swim system** (`render/fishDeformation.ts`,
+  `data/swim.ts`, rewritten `tankScene` motion): fish flex head→tail, tail
+  swishes (amp/freq by state + speed), bodies curve through turns, heading leads,
+  smooth acceleration/glide, idle/cruise/dart states, edge-avoidance (no bounce),
+  depth-lane wander, feeding darts. Inverts keep a simple scoot.
+- **Upscaled fish art** installed (betta centerpiece, harlequin rasbora, cory,
+  guppy, platy) from `UpScaled_Assets`; trims/sizes retuned.
+- **Clearer water:** depth-haze `hazeAlpha` cut ~0.46→0.26, caustics + god-rays +
+  glass sheen softened. Photo glass overlay + floating name plate already removed.
+- Playwright-verified: body bend visible, fish swim + turn, feeding response,
+  no console errors. Tuning lives in `data/swim.ts`.
+
 ## In progress (Phase 3 polish — remaining)
-- Schooling cohesion / bottom-dweller grazing & snail-crawl polish.
+- Per-species feel tuning (amp/freq) once reviewed at full framerate.
 - Plant sway + day/night lighting grade pass.
 
 ## Data still to mine (cross-cutting)

@@ -5,6 +5,40 @@ decision → consequences.
 
 ---
 
+## 2026-06-29 — Real fish swimming via sliced sprite deformation + steering
+**Context:** Fish read as flat PNG stickers that bobbed/slid; an earlier
+whole-sprite vertical wave looked like jitter. The brief: visible body bend, tail
+swish, head-led smooth turns, idle/cruise/dart states, 2.5D depth.
+**Decision:** Two new modules + a motion rewrite.
+- `render/fishDeformation.ts` — `drawSlicedStamp()` redraws a fish's graded stamp
+  as ~18 vertical slices, each offset by a head→tail travelling sine wave
+  (head weight ~0, tail max) plus a static `turnBend` for body curvature in
+  turns. `effects.drawSprite` gained an optional `deform` that routes to it.
+- `data/swim.ts` — per-behavior `SwimProfile` (cruise/turn/tailAmp/tailFreq/
+  bodyFlex/hover/dartChance/schooling/depth); `cruise` derives from species speed.
+- `render/tankScene.ts` — agents now use an idle/cruise/dart **state machine** with
+  acceleration-limited steering (curved paths, arrive-slow, edge **avoidance** not
+  bounce), depth-lane wander, facing **hysteresis** + eased turn-through with a
+  0.3 minimum width (no sliver/pop), velocity pitch, and a smoothed bend signal.
+  Tail amplitude/frequency scale with state + speed; inverts (shrimp/snail) keep a
+  simple scoot with no flex.
+**Consequences:** Fish visibly flex and swish, lead with the head, accelerate and
+glide, and respond to feeding (staggered darts toward the surface). Cost ≈ 18
+slice-blits per fish/frame (~500 total) — fine for one tank. Amplitudes/freqs are
+all in `swim.ts` for easy tuning.
+
+## 2026-06-29 — Upscaled fish art + betta centerpiece
+**Context:** User supplied 5 high-res, background-removed fish in `UpScaled_Assets`.
+**Decision:** Crop each to its alpha bbox, downscale to ≤1000px, install as
+`harlequin_rasbora`, `panda_cory`, `guppy`, `platy`, `betta`; set their
+`CREATURE_TRIM` to full-frame and retune `sizeFrac`. Swapped the starter tank's
+centerpiece from `dwarf_gourami` to the new `betta` to showcase the body-bend
+animation. (Existing saves keep their old centerpiece until "Reset Game".)
+**Consequences:** Much higher-fidelity fish; the rest (celestial pearl danio,
+inverts) still use the original art until upscaled versions exist.
+
+---
+
 ## 2026-06-29 — Drop the tank_glass.png photo overlay (fixes the double-outline)
 **Context:** The glossy pass screen-blended `tank_glass.png` over the tank. That
 asset is a ¾-perspective photo of a real aquarium with bright cyan glass edges;

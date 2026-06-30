@@ -10,6 +10,7 @@
  */
 import type { Rect, SceneLayout } from "./layers";
 import type { TrimBox } from "../data/species";
+import { drawSlicedStamp } from "./fishDeformation";
 
 const TEAL = "22, 78, 86"; // underwater grade colour (rgb)
 
@@ -45,12 +46,20 @@ export interface SpritePlacement {
   rot?: number;
   alpha?: number;
   /**
-   * Optional body undulation. Draws the sprite in vertical strips, each pushed
-   * vertically by a sine wave that travels head→tail, so a fish's body flexes
-   * and its tail sweeps as it swims (a real swim cue, not just a side-to-side
-   * slide). `amp` is in px; `waves` is the wave's phase span across the body.
+   * Optional body deformation (sliced swim flex). Amplitudes are fractions of
+   * the sprite's drawn height so they scale with on-screen size. When present the
+   * sprite is drawn as vertical slices bent by a head→tail wave.
    */
-  bend?: { amp: number; phase: number; waves: number };
+  deform?: {
+    headLeft: boolean;
+    slices: number;
+    /** Peak tail swing as a fraction of drawn height. */
+    ampFrac: number;
+    phase: number;
+    waveSpan: number;
+    /** Static turn curvature as a fraction of drawn height (signed). */
+    turnBendFrac: number;
+  };
 }
 
 export interface SpriteStyle {
@@ -128,23 +137,18 @@ export function drawSprite(
   const sx = place.scaleX != null ? place.scaleX : place.flip ? -1 : 1;
   if (sx !== 1) ctx.scale(sx, 1);
   if (place.rot) ctx.rotate(place.rot);
-
-  const bend = place.bend;
-  if (bend && bend.amp > 0.25) {
-    // Undulate: redraw the graded stamp in vertical strips. Each strip is offset
-    // vertically by a head→tail traveling wave, weighted toward the tail so the
-    // head stays steady. Strips overlap by 1px to avoid seams.
-    const strips = 12;
-    const headX = trim.x * iw * scale; // head edge (sprites face left → head at left)
-    const bodyW = trim.w * iw * scale || 1;
-    const stripW = SW / strips;
-    for (let i = 0; i < strips; i++) {
-      const sxs = i * stripW;
-      let frac = (sxs + stripW / 2 - headX) / bodyW;
-      frac = frac < 0 ? 0 : frac > 1 ? 1 : frac;
-      const off = Math.sin(bend.phase - frac * bend.waves) * bend.amp * Math.pow(frac, 1.4);
-      ctx.drawImage(stamp, sxs, 0, stripW + 1, SH, -ax + sxs, -ay + off, stripW + 1, SH);
-    }
+  if (place.deform) {
+    const d = place.deform;
+    drawSlicedStamp(ctx, stamp, SW, SH, ax, ay, {
+      headLeft: d.headLeft,
+      slices: d.slices,
+      amp: d.ampFrac * drawnH,
+      phase: d.phase,
+      waveSpan: d.waveSpan,
+      turnBend: d.turnBendFrac * drawnH,
+      contentX0: trim.x * iw * scale,
+      contentW: trim.w * iw * scale,
+    });
   } else {
     ctx.drawImage(stamp, 0, 0, SW, SH, -ax, -ay, SW, SH);
   }
@@ -206,7 +210,7 @@ export function paintWater(ctx: CanvasRenderingContext2D, interior: Rect, light:
     y + h * 0.2,
     w * 0.75,
   );
-  rg.addColorStop(0, `rgba(160, 226, 220, ${0.2 + light * 0.14})`);
+  rg.addColorStop(0, `rgba(160, 226, 220, ${0.1 + light * 0.07})`);
   rg.addColorStop(1, "rgba(160, 226, 220, 0)");
   ctx.fillStyle = rg;
   ctx.fillRect(x, y, w, h);
@@ -270,7 +274,7 @@ export function paintCaustics(
     const cx = interior.x + interior.w * cxn;
     const cy = interior.y + interior.h * yn;
     const r = interior.w * (0.05 + 0.03 * Math.sin(time * 0.2 + p));
-    const a = 0.07 + 0.04 * Math.sin(time * 0.27 + p);
+    const a = 0.04 + 0.025 * Math.sin(time * 0.27 + p);
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
     g.addColorStop(0, `rgba(178, 230, 218, ${Math.max(0, a)})`);
     g.addColorStop(1, "rgba(170, 226, 214, 0)");
@@ -367,9 +371,10 @@ export function paintGlassFront(ctx: CanvasRenderingContext2D, layout: SceneLayo
   ctx.globalCompositeOperation = "lighter";
 
   // Soft vertical sheen — the whole pane catches ambient light, brightest at top.
+  // Kept subtle so the glass reads clear/glossy rather than milky/foggy.
   const sheen = ctx.createLinearGradient(0, interior.y, 0, interior.y + interior.h);
-  sheen.addColorStop(0, "rgba(156, 204, 210, 0.12)");
-  sheen.addColorStop(0.4, "rgba(156, 204, 210, 0.03)");
+  sheen.addColorStop(0, "rgba(156, 204, 210, 0.06)");
+  sheen.addColorStop(0.4, "rgba(156, 204, 210, 0.015)");
   sheen.addColorStop(1, "rgba(156, 204, 210, 0)");
   ctx.fillStyle = sheen;
   ctx.fillRect(interior.x, interior.y, interior.w, interior.h);
