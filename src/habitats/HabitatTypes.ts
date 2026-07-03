@@ -256,6 +256,9 @@ export interface Substrate {
   type: SubstrateType;
   color: number; // hex, for placeholder rendering
   depth: number; // visual depth (m)
+  /** Registry id of the applied terrain material (src/data/terrains.ts).
+   *  Absent on older saves ⇒ the default Sahara Sand. */
+  terrainId?: string;
 }
 
 /** Standard enclosure size presets for the (future) habitat builder. */
@@ -395,6 +398,9 @@ export interface HabitatState {
   dirt?: { nx: number; nz: number; cells: number[] };
   /** Sculpted substrate heights + wet patches (see HabitatTerrain). */
   terrain?: { nx: number; nz: number; heights: number[]; water: number[] };
+  /** Per-cell painted substrate materials (see HabitatMaterialMap). Absent in
+   *  older saves ⇒ a uniform floor of layout.substrate.terrainId. */
+  materials?: { nx: number; nz: number; ids: string[]; cells: number[] };
   /** Track-Intake feeding history (newest last, capped; absent in old saves). */
   feedingLog?: FeedingLogEntry[];
   /** Lingering hydration support from recent juicy meals (decays; 0 when absent). */

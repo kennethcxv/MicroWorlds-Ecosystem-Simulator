@@ -21,13 +21,13 @@ export const DIRT_NX = 44;
 export const DIRT_NZ = 28;
 
 /** How fast dirt builds (per second): a slow ambient film + strong hotspots.
- *  PACING: the ambient film takes ~3.5 hours to saturate (a freshly cleaned tank
- *  stays presentable for a whole session); hotspots need ~half a minute of
- *  solid lingering before a visible spot forms and several minutes to look
- *  filthy — the gecko living its life shouldn't dirty the sand faster than the
- *  keeper can enjoy it (droppings still foul fast via their 1.4 weight). */
-const AMBIENT_PER_SEC = 0.00008;
-const HOTSPOT_PER_SEC = 0.006;
+ *  PACING (retuned SLOWER on player feedback): the ambient film takes ~9 hours
+ *  to saturate (a freshly cleaned tank stays presentable across sessions);
+ *  hotspots need a couple of minutes of solid lingering before a visible spot
+ *  forms — grime is a gentle chore, not a treadmill (droppings still foul
+ *  fast via their 1.4 weight). */
+const AMBIENT_PER_SEC = 0.00003;
+const HOTSPOT_PER_SEC = 0.0022;
 const HOTSPOT_RADIUS = 0.28; // metres of influence around a hotspot
 
 export function createDirtMap(nx = DIRT_NX, nz = DIRT_NZ): DirtMap {

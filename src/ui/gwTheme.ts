@@ -239,6 +239,211 @@ export function ensureGwStyles(): void {
   .gw-item-card.gw-active .check { display: grid; }
   .gw-item-card:disabled { opacity: 0.5; cursor: default; }
 
+  /* ── Terrain Mode (reference: tab pills riding the drawer's top edge, a
+       compact floating sculpt-tool palette, photo material tiles + info strip,
+       slider pills and a round reset) ──────────────────────────────────── */
+  /* Blocky, CONNECTED tab bar riding the drawer's top edge (reference): wide
+     squared segments joined into one block, the active one merging seamlessly
+     into the drawer body with a green top rule. */
+  .gw-drawer-tabs { position: absolute; bottom: 100%; left: 14px; display: flex; gap: 0; margin-bottom: -1px; }
+  .gw-drawer-tab { appearance: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    gap: 9px; min-width: 132px; padding: 12px 22px 13px; border-radius: 0; border: 1px solid var(--gw-border);
+    border-bottom: none; background: rgba(10, 11, 9, 0.8); color: var(--gw-ink-dim);
+    backdrop-filter: var(--gw-blur); -webkit-backdrop-filter: var(--gw-blur);
+    font: 700 13px/1 var(--gw-font); transition: color 0.15s, background 0.15s; }
+  .gw-drawer-tab:first-child { border-radius: 12px 0 0 0; }
+  .gw-drawer-tab:last-child { border-radius: 0 12px 0 0; }
+  .gw-drawer-tab + .gw-drawer-tab { border-left: none; }
+  .gw-drawer-tab .ic { width: 17px; height: 17px; display: grid; place-items: center; }
+  .gw-drawer-tab:hover { color: var(--gw-ink); background: rgba(22, 24, 20, 0.85); }
+  .gw-drawer-tab.gw-active { color: var(--gw-green); background: var(--gw-bg);
+    box-shadow: inset 0 3px 0 var(--gw-green-line), inset 0 16px 24px -16px rgba(140,226,90,0.4); }
+
+  .gw-terrain-grid { display: flex; gap: 13px; align-items: stretch; }
+  .gw-tool-palette { flex: 0 0 auto; display: grid; grid-template-columns: repeat(2, 106px); gap: 6px;
+    align-content: start; padding: 8px; border-radius: 15px;
+    background: rgba(0,0,0,0.26); border: 1px solid var(--gw-border-soft); }
+  .gw-tool-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .gw-tool-mini { appearance: none; cursor: pointer; position: relative; display: flex; align-items: center;
+    gap: 8px; padding: 9px 10px; border-radius: 10px; text-align: left;
+    background: rgba(255,255,255,0.045); border: 1.5px solid var(--gw-border-soft);
+    color: var(--gw-ink); font: 700 11.5px/1 var(--gw-font);
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s; }
+  .gw-tool-mini .ic { width: 18px; height: 18px; display: grid; place-items: center; color: var(--gw-ink-dim);
+    flex: 0 0 auto; transition: color 0.15s; }
+  .gw-tool-mini:hover { background: rgba(255,255,255,0.1); }
+  .gw-tool-mini.gw-active { background: linear-gradient(180deg, #6ecb46, #4da335); border-color: rgba(255,255,255,0.22);
+    color: #ffffff; box-shadow: 0 5px 16px rgba(90,190,60,0.4), inset 0 1px 0 rgba(255,255,255,0.25); }
+  .gw-tool-mini.gw-active .ic { color: #ffffff; }
+  .gw-tool-mini.half { padding: 8px 6px; gap: 5px; font-size: 10.5px; justify-content: center; }
+
+  /* The tool-context card (non-paint tools): what the brush does + live terrain
+     readouts + a husbandry tip, in the space the materials occupy while painting. */
+  .gw-tool-context { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px;
+    padding: 10px 13px; border-radius: 14px;
+    background: rgba(255,255,255,0.035); border: 1px solid var(--gw-border-soft); }
+  .gw-tool-context .row { display: flex; align-items: center; gap: 13px; min-width: 0; }
+  .gw-tool-context .big { width: 42px; height: 42px; flex: 0 0 auto; border-radius: 12px;
+    display: grid; place-items: center; background: rgba(0,0,0,0.3); border: 1px solid var(--gw-border-soft); }
+  .gw-tool-context .big .ic { width: 23px; height: 23px; display: grid; place-items: center; }
+  .gw-tool-context .tx { min-width: 0; max-width: 400px; }
+  .gw-tool-context .tx .nm { font: 700 13px/1.15 var(--gw-font); }
+  .gw-tool-context .tx .ds { font: 500 10.5px/1.35 var(--gw-font); color: var(--gw-ink-dim); margin-top: 3px; }
+  .gw-tool-context .chips { display: flex; gap: 8px; margin-left: auto; flex: 0 0 auto; }
+  .gw-tool-context .chip { min-width: 76px; padding: 6px 10px; border-radius: 10px; text-align: center;
+    background: rgba(0,0,0,0.28); border: 1px solid var(--gw-border-soft); }
+  .gw-tool-context .chip .k { display: block; font: 700 8.5px/1 var(--gw-font); letter-spacing: 0.9px;
+    text-transform: uppercase; color: var(--gw-ink-dim); }
+  .gw-tool-context .chip .v { display: block; font: 800 13px/1 var(--gw-font); margin-top: 4px;
+    font-variant-numeric: tabular-nums; }
+  .gw-tool-context .profile { position: relative; border-radius: 10px; overflow: hidden;
+    background: rgba(0,0,0,0.26); border: 1px solid var(--gw-border-soft); height: 46px; }
+  .gw-tool-context .profile canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .gw-tool-context .profile .lbl { position: absolute; top: 4px; left: 8px; font: 700 8px/1 var(--gw-font);
+    letter-spacing: 1px; text-transform: uppercase; color: var(--gw-ink-dim); }
+  .gw-tool-context .tip { display: flex; align-items: flex-start; gap: 7px; padding: 7px 10px;
+    border-radius: 10px; background: rgba(240,182,75,0.08); border: 1px solid rgba(240,182,75,0.28);
+    font: 500 10.5px/1.4 var(--gw-font); color: var(--gw-ink); }
+  .gw-tool-context .tip .ic { width: 12px; height: 12px; display: grid; place-items: center;
+    color: var(--gw-amber); flex: 0 0 auto; margin-top: 1px; }
+
+  /* Material tiles: the card chrome wraps photo + label, states on the CARD
+     border, ✓ on the photo corner, lock chip for future substrates. */
+  .gw-mat-row { display: flex; gap: 8px; align-items: flex-start; }
+  .gw-mat-tile { appearance: none; cursor: pointer; padding: 4px 4px 5px;
+    width: 78px; flex: 0 0 auto; color: var(--gw-ink); font-family: var(--gw-font); text-align: center;
+    background: rgba(0,0,0,0.24); border: 2px solid var(--gw-border-soft); border-radius: 13px;
+    box-shadow: 0 5px 14px rgba(0,0,0,0.35);
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.13s, background 0.15s; }
+  .gw-mat-tile:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.22); }
+  .gw-mat-tile .ph { position: relative; display: block; width: 100%; aspect-ratio: 1; border-radius: 9px;
+    overflow: hidden; box-shadow: inset 0 0 12px rgba(0,0,0,0.25); }
+  .gw-mat-tile .ph img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+  .gw-mat-tile .nm { display: block; font: 700 10px/1.2 var(--gw-font); margin-top: 5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gw-mat-tile .sub { display: block; font: 600 8.5px/1.2 var(--gw-font); color: var(--gw-ink-dim); margin-top: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 9px; }
+  .gw-mat-tile .check { position: absolute; right: 4px; bottom: 4px; width: 18px; height: 18px; border-radius: 50%;
+    display: none; place-items: center; background: var(--gw-green); color: #10240b; font: 800 10.5px/1 var(--gw-font);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+  .gw-mat-tile .lk { position: absolute; right: 4px; top: 4px; width: 19px; height: 19px; border-radius: 7px;
+    display: grid; place-items: center; background: rgba(10,11,9,0.62); border: 1px solid rgba(255,255,255,0.14);
+    color: #ddd6bd; }
+  .gw-mat-tile .lk .ic { width: 11px; height: 11px; display: grid; place-items: center; }
+  .gw-mat-tile.gw-applied { border-color: var(--gw-green-line); box-shadow: 0 0 18px rgba(140,226,90,0.28), 0 5px 14px rgba(0,0,0,0.35); }
+  .gw-mat-tile.gw-applied .check { display: grid; }
+  .gw-mat-tile.gw-applied .nm { color: var(--gw-green); }
+  .gw-mat-tile.gw-armed { border-color: var(--gw-amber-line); box-shadow: 0 0 16px rgba(240,182,75,0.28), 0 5px 14px rgba(0,0,0,0.35); }
+  .gw-mat-tile.gw-armed .nm { color: var(--gw-amber); }
+  .gw-mat-tile.gw-locked .ph { filter: saturate(0.5) brightness(0.62); }
+  .gw-mat-tile.gw-locked .nm { color: var(--gw-ink-dim); }
+
+  .gw-mat-info { display: flex; align-items: center; gap: 12px; padding: 6px 11px; border-radius: 12px;
+    background: rgba(255,255,255,0.035); border: 1px solid var(--gw-border-soft); min-height: 46px; }
+  .gw-mat-info .sw { display: block; width: 32px; height: 32px; flex: 0 0 auto; border-radius: 8px; overflow: hidden;
+    border: 1.5px solid rgba(255,255,255,0.12); box-shadow: 0 3px 9px rgba(0,0,0,0.4); }
+  .gw-mat-info .sw img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .gw-mat-info .tx { min-width: 0; max-width: 350px; }
+  .gw-mat-info .tx .nm { font: 700 12px/1.15 var(--gw-font); display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .gw-mat-info .tx .ds { font: 500 10px/1.3 var(--gw-font); color: var(--gw-ink-dim); margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gw-mat-info .tags { display: flex; gap: 4px; flex: 0 0 auto; }
+  .gw-mat-info .tags .gw-pill { padding: 3px 7px; font-size: 8.5px; text-transform: capitalize; }
+  .gw-mat-info .meters { display: grid; grid-template-columns: repeat(5, 52px); gap: 8px; margin-left: auto; }
+  .gw-mat-meter { display: flex; flex-direction: column; gap: 3px; }
+  .gw-mat-meter .k { font: 700 8px/1 var(--gw-font); letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--gw-ink-dim); white-space: nowrap; }
+  .gw-mat-meter .gw-bar { height: 4px; }
+  .gw-mat-info .cta { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+
+  .gw-slider.pill { padding: 8px 14px; border-radius: 999px; background: rgba(0,0,0,0.24);
+    border: 1px solid var(--gw-border-soft); }
+  .gw-slider .lbl .ic { width: 16px; height: 16px; display: grid; place-items: center; color: var(--gw-green); }
+  .gw-icon-button.sm { width: 40px; height: 40px; font-size: 15px; box-shadow: 0 6px 16px rgba(0,0,0,0.4); }
+
+  /* Brush Mode selector chip (reference: ⚡ Brush Mode · Strong ›). */
+  .gw-mode-chip { appearance: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 13px; border-radius: 999px; background: rgba(0,0,0,0.24); border: 1px solid var(--gw-border-soft);
+    color: var(--gw-ink); font: 700 12px/1 var(--gw-font); transition: background 0.15s, border-color 0.15s; }
+  .gw-mode-chip:hover { background: rgba(255,255,255,0.07); }
+  .gw-mode-chip .ic { width: 15px; height: 15px; display: grid; place-items: center; color: var(--gw-amber); }
+  .gw-mode-chip .lb { color: var(--gw-ink-dim); font-weight: 600; }
+  .gw-mode-chip .vl { color: var(--gw-green); min-width: 48px; text-align: left; }
+  .gw-mode-chip .car { color: var(--gw-ink-dim); font-size: 11px; }
+  .gw-mode-chip.strong .vl { color: var(--gw-amber); }
+
+  /* ── Filters tab (analysis lenses over the habitat) ─────────────────── */
+  .gw-filter-grid { display: flex; gap: 12px; align-items: stretch; }
+  .gw-filter-list { flex: 0 0 auto; display: grid; grid-template-columns: repeat(2, 112px);
+    grid-template-rows: auto repeat(5, 1fr); gap: 6px; align-self: stretch; }
+  .gw-filter-list .gw-section-title { grid-column: 1 / -1; }
+  .gw-filter-row { appearance: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
+    padding: 9px 11px; border-radius: 10px; text-align: left;
+    background: rgba(255,255,255,0.045); border: 1.5px solid var(--gw-border-soft);
+    color: var(--gw-ink); font: 700 11.5px/1 var(--gw-font); white-space: nowrap; overflow: hidden;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s; }
+  .gw-filter-row .ic { width: 15px; height: 15px; display: grid; place-items: center; flex: 0 0 auto; }
+  .gw-filter-row:hover { background: rgba(255,255,255,0.1); }
+  .gw-filter-row.gw-active { border-color: var(--gw-green-line); background: var(--gw-green-soft);
+    color: var(--gw-green); box-shadow: 0 0 14px rgba(140,226,90,0.2); }
+
+  .gw-filter-main { flex: 1.1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+  .gw-filter-title { display: flex; align-items: center; gap: 8px; font: 800 14px/1 var(--gw-font);
+    letter-spacing: 1.5px; text-transform: uppercase; }
+  .gw-filter-title .ic { width: 17px; height: 17px; display: grid; place-items: center; }
+  .gw-filter-desc { font: 500 11px/1.35 var(--gw-font); color: var(--gw-ink-dim); }
+  .gw-fcard { min-width: 0; padding: 8px 11px; border-radius: 12px;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--gw-border-soft); }
+  .gw-fcard.hero { display: flex; flex-direction: column; gap: 5px; }
+  .gw-fcard .cap { font: 700 9.5px/1 var(--gw-font); letter-spacing: 1px; text-transform: uppercase;
+    color: var(--gw-ink-dim); }
+  .gw-fcard .scorerow { display: flex; align-items: center; gap: 9px; }
+  .gw-fcard .scorerow .ringwrap { margin-left: auto; }
+  .gw-fcard .scorerow .ringwrap .gw-score-ring { width: 44px; height: 44px; }
+  .gw-fcard .scorerow .ringwrap .mid { font-size: 13px; }
+  .gw-fcard .num { font: 800 27px/1 var(--gw-font); color: var(--gw-green); letter-spacing: -0.5px; }
+  .gw-fcard .num.warn { color: var(--gw-amber); }
+  .gw-fcard .num.bad { color: var(--gw-red); }
+  .gw-fcard .st { font: 700 13px/1 var(--gw-font); color: var(--gw-green); }
+  .gw-fcard .st.warn { color: var(--gw-amber); }
+  .gw-fcard .st.bad { color: var(--gw-red); }
+  .gw-fcard .rec { font: 600 10.5px/1.3 var(--gw-font); color: var(--gw-ink-dim); margin-top: 8px; }
+  .gw-fcard .gw-bar { margin-top: 8px; }
+  .gw-fcard .info { display: flex; gap: 8px; font: 500 12px/1.45 var(--gw-font); color: var(--gw-ink); }
+  .gw-fcard .info .ic { width: 16px; height: 16px; flex: 0 0 auto; margin-top: 1px; color: var(--gw-green); }
+
+  .gw-filter-map { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 6px; }
+  .gw-legend-bar { height: 8px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.4); }
+  .gw-legend-caps { display: flex; justify-content: space-between; font: 600 9.5px/1 var(--gw-font);
+    color: var(--gw-ink-dim); padding: 0 2px; }
+  .gw-filter-minimap { position: relative; flex: 1; min-height: 108px; border-radius: 13px; overflow: hidden;
+    border: 1px solid var(--gw-border); background: #221a10; box-shadow: inset 0 0 22px rgba(0,0,0,0.5); }
+  .gw-filter-minimap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .gw-filter-about { width: 232px; flex: 0 0 auto; display: flex; flex-direction: column; gap: 7px;
+    padding: 9px 12px; border-radius: 13px; background: rgba(255,255,255,0.035);
+    border: 1px solid var(--gw-border-soft); }
+  .gw-filter-about .cap { font: 700 9.5px/1 var(--gw-font); letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--gw-ink-dim); }
+  .gw-filter-about p { margin: 0; font: 500 10.5px/1.4 var(--gw-font); color: var(--gw-ink-dim); }
+  .gw-filter-about p:first-of-type { color: var(--gw-ink); }
+  .gw-tips { margin-top: 1px; padding: 8px 10px; border-radius: 10px; background: rgba(240,182,75,0.08);
+    border: 1px solid rgba(240,182,75,0.3); }
+  .gw-tips .cap { display: flex; align-items: center; gap: 6px; font: 700 9.5px/1 var(--gw-font);
+    letter-spacing: 1.2px; text-transform: uppercase; color: var(--gw-amber); }
+  .gw-tips .tx { font: 500 10.5px/1.4 var(--gw-font); color: var(--gw-ink); margin-top: 5px; }
+
+  /* Tight drawer variant (the Terrain editor). */
+  .gw-bottom-drawer.gw-tight { padding: 12px 15px; }
+
+  .gw-reset-pill { appearance: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px; border-radius: 999px; background: rgba(255,255,255,0.05);
+    border: 1px solid var(--gw-border-soft); color: var(--gw-ink); font: 700 12px/1 var(--gw-font);
+    transition: background 0.15s; }
+  .gw-reset-pill:hover { background: rgba(255,255,255,0.1); }
+  .gw-reset-pill .ic { width: 15px; height: 15px; display: grid; place-items: center; color: var(--gw-ink-dim); }
+
   /* ── Buttons ────────────────────────────────────────────────────────── */
   .gw-primary-button { appearance: none; cursor: pointer; border: none; border-radius: 15px;
     padding: 13px 26px; background: linear-gradient(180deg, #6ecb46, #4da335);

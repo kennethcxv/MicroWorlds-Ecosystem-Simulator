@@ -507,6 +507,8 @@ export class LizardHud {
     if (feed) feed.sub.textContent = s.canFeed ? "Ready — live insects" : `Next in ${Math.ceil(s.feedCooldown)}s`;
     const clean = this.dockCards.get("clean");
     if (clean) clean.sub.textContent = dirtSpotCount > 0 ? `${dirtSpotCount} spot${dirtSpotCount > 1 ? "s" : ""} detected` : "Spot clean";
+    const terrain = this.dockCards.get("terrain");
+    if (terrain) terrain.sub.textContent = s.substrateName;
 
     // Warning pill (one at a time, most important first).
     const warn = s.warnings[0] ?? "";

@@ -19,12 +19,12 @@ describe("dirtSpots", () => {
   it("finds two separated hotspots at their world positions, dirtiest first", () => {
     const m = createDirtMap();
     // Two lingering hotspots: strong at (-0.8, -0.3), weaker at (0.9, 0.4).
-    // (Durations sized to the SLOW real pacing — dirt needs sustained
-    // lingering before a spot forms.)
-    for (let i = 0; i < 300; i++) {
+    // (Durations sized to the SLOW real pacing — dirt needs minutes of
+    // sustained lingering before a spot forms.)
+    for (let i = 0; i < 820; i++) {
       accumulateDirt(m, DIMS, 0.25, [
         { x: -0.8, z: -0.3, w: 1 },
-        ...(i < 180 ? [{ x: 0.9, z: 0.4, w: 1 }] : []),
+        ...(i < 500 ? [{ x: 0.9, z: 0.4, w: 1 }] : []),
       ]);
     }
     const spots = dirtSpots(m, DIMS);
@@ -39,7 +39,7 @@ describe("dirtSpots", () => {
 
   it("one smear yields one ring — spots keep a minimum separation", () => {
     const m = createDirtMap();
-    for (let i = 0; i < 300; i++) accumulateDirt(m, DIMS, 0.25, [{ x: 0, z: 0, w: 1 }]);
+    for (let i = 0; i < 820; i++) accumulateDirt(m, DIMS, 0.25, [{ x: 0, z: 0, w: 1 }]);
     const spots = dirtSpots(m, DIMS);
     for (let a = 0; a < spots.length; a++) {
       for (let b = a + 1; b < spots.length; b++) {
@@ -54,7 +54,7 @@ describe("dirtSpots", () => {
     for (let i = 0; i < 40; i++) accumulateDirt(m, DIMS, 0.25, []);
     expect(dirtSpots(m, DIMS)).toEqual([]);
     // Many strong hotspots — capped at maxCount.
-    for (let i = 0; i < 400; i++) {
+    for (let i = 0; i < 1100; i++) {
       accumulateDirt(m, DIMS, 0.3, [
         { x: -1.2, z: -0.5, w: 1 },
         { x: -0.4, z: 0.4, w: 1 },
@@ -67,7 +67,7 @@ describe("dirtSpots", () => {
 
   it("cleaning a spot makes its ring disappear", () => {
     const m = createDirtMap();
-    for (let i = 0; i < 300; i++) accumulateDirt(m, DIMS, 0.25, [{ x: -0.8, z: -0.3, w: 1 }]);
+    for (let i = 0; i < 820; i++) accumulateDirt(m, DIMS, 0.25, [{ x: -0.8, z: -0.3, w: 1 }]);
     expect(dirtSpots(m, DIMS).length).toBeGreaterThan(0);
     for (let i = 0; i < 30; i++) cleanAt(m, DIMS, -0.8, -0.3, 0.4, 0.3);
     expect(dirtSpots(m, DIMS)).toEqual([]);

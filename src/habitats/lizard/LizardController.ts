@@ -4,7 +4,7 @@
  * feed/clean/decorate/toggleDebug — with no direct dependency on Three.js. Pure
  * types only.
  */
-import type { FeedingLogEntry, HabitatEnvironment, HabitatEvent, HabitatScores, PlacedObject } from "../HabitatTypes";
+import type { FeedingLogEntry, HabitatEnvironment, HabitatEvent, HabitatScores, HabitatType, PlacedObject } from "../HabitatTypes";
 import type { CollisionWorld } from "../HabitatCollision";
 import type { DirtSpot } from "./LizardDirtSystem";
 import type { IntakeSummary } from "./LizardNutrition";
@@ -120,6 +120,8 @@ export interface LizardHudState {
   feederCount: number;
   /** Whether the collision debug overlay is currently visible (for the button). */
   debugOn: boolean;
+  /** Display name of the applied substrate (Terrain dock subtitle). */
+  substrateName: string;
 }
 
 /** Rich read-out for the click-the-animal info card. */
@@ -175,8 +177,9 @@ export interface FoodOption {
   role?: string;
 }
 
-/** Brush tools of Terrain Mode. */
-export type TerrainTool = "raise" | "lower" | "smooth" | "flatten" | "water" | "dry";
+/** Brush tools of Terrain Mode. `erase` is the reset brush: heights flatten
+ *  back to level AND damp patches dry in one stroke. */
+export type TerrainTool = "raise" | "lower" | "smooth" | "flatten" | "water" | "dry" | "erase";
 
 /** Independent debug overlays (the View-Collisions legend hosts the toggles). */
 export type DebugOption = "collisions" | "feet" | "normals" | "terrain";
@@ -206,6 +209,12 @@ export interface LizardController {
   setCleanHighlights(on: boolean): void;
   /** REPLACE WATER: empty + refill the water dish (sparkle + sound + freshness). */
   replaceWaterNow(): boolean;
+  /** The pointer button state for the cleaning tools (a released hand stops
+   *  the work animation even when the pointer hasn't moved since). */
+  setCleanScrubbing(on: boolean): void;
+  /** Manual water pour: hold the pitcher over the dish to fill it (progress
+   *  runs in the sim tick; drifting off the dish stops it). */
+  pourAt(ground: { x: number; z: number } | null): "pouring" | "offDish" | "noDish";
   /** REMOVE WASTE: scoop EVERY dropping (falls back to the dirtiest spot). */
   removeWasteNow(): { scooped: number; cleanedSpot: boolean };
   /** Everything the Cleaning drawer's status pills need, in one honest read. */
@@ -268,11 +277,39 @@ export interface LizardController {
   clearFeedHover(): void;
   /** Show/hide the soft hover ring under the gecko. */
   setGeckoHover(on: boolean): void;
-  /** Apply a terrain brush stroke at world (x,z). */
-  sculptAt(tool: TerrainTool, x: number, z: number, radius: number): void;
+  /** Apply a terrain brush stroke at world (x,z). `strength` (0.1..1.6, from
+   *  the Intensity slider × Brush Mode) scales depth / extra passes. */
+  sculptAt(tool: TerrainTool, x: number, z: number, radius: number, strength?: number): void;
   /** Strong brush (advanced): taller dunes + digging all the way to bedrock. */
   setStrongBrush(on: boolean): void;
   strongBrush(): boolean;
+  /** Terrain Mode's in-world brush cursor (soft ring + green tool badge).
+   *  Returns whether it is shown (false ⇒ pointer is outside the enclosure). */
+  terrainHover(ground: { x: number; z: number } | null, radius: number, glyph: string, active: boolean): boolean;
+  clearTerrainHover(): void;
+  // ── Filters tab (analysis overlays, src/data/habitatFilters.ts) ───────────
+  /** Show an analysis wash over the habitat floor (null clears it). */
+  setAnalysisFilter(id: string | null): void;
+  setAnalysisOpacity(frac: number): void;
+  setAnalysisIntensity(frac: number): void;
+  /** Live score + status + one-line verdict for a filter. */
+  filterReadout(id: string): { id: string; score: number; word: string; tone: "good" | "warn" | "bad"; detail: string };
+  /** Top-down analysis minimap canvas for the drawer (null when no filter). */
+  filterMapCanvas(): HTMLCanvasElement | null;
+  // ── Substrate (Terrain Mode's Materials row, src/data/terrains.ts) ────────
+  /** The DOMINANT painted substrate (registry id + display name, or "Mixed
+   *  substrate") and the habitat type gating which materials are unlocked. */
+  substrateInfo(): { id: string; name: string; habitat: HabitatType };
+  /** The Paint brush, PHYSICAL: lay a material into the per-cell map under a
+   *  stroke sample (the floor repaints exactly there). Returns whether any
+   *  cells changed. */
+  paintMaterialAt(id: string, x: number, z: number, radius: number): boolean;
+  /** A paint stroke finished: dominant/bed-tint/humidity update + one event +
+   *  save. */
+  paintStrokeEnd(): void;
+  /** Live terrain readouts for the tool-context card (peak dune, deepest dig,
+   *  damp %, and the centre-line elevation profile). */
+  terrainInfo(): { reliefCm: number; deepCm: number; wetPct: number; profile: number[] };
   /** Current visibility of each debug overlay. */
   debugOptions(): Record<DebugOption, boolean>;
   /** Toggle one debug overlay; returns its new visibility. */

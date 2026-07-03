@@ -1,5 +1,162 @@
 # STATUS — GLASSWATER
 
+## TERRAIN EDITOR v3: TRUE MATERIAL PAINTING + 10 LENSES (v10.4) — 2026-07-02
+
+- **PHYSICAL substrate painting** — the flagship: a per-cell material map
+  (`src/habitats/HabitatMaterialMap.ts`, pure + 9 tests, persisted on
+  `HabitatState.materials`) + a **composite floor texture**
+  (`MaterialFloor` in ThreeSandTexture: full-floor canvas whose pixels copy
+  from each material's procedural tile with hash-jittered cell lookups →
+  ragged hand-painted boundaries; strokes repaint only the brushed region).
+  Dragging the Paint brush lays the ARMED material exactly where you stroke
+  — live-proven: a drag painted 167 clay cells into 2393 sand cells, visible
+  as a ragged band on the floor, **persisted through reload** (82.9/17.1
+  coverage after cold boot), then swept back to 100% sahara. Stroke-end
+  commits dominant substrate + bed tint + coverage-WEIGHTED humidity blend +
+  one event + save. Dock label reads "Mixed substrate" when dominance < 70%.
+  QA: `__lizard.paintMaterial(id,x,z,r)` / `materialCoverage()`.
+- **Tool grid 4×2, all full-size** (Wet/Dry no longer crammed half-pairs):
+  Raise · Lower · Smooth · **Flatten** (re-added, levels without drying) ·
+  Erase · Paint · Wet · Dry. The context card gained a **husbandry TIP strip**
+  per tool (registry `tip`) alongside the live Relief/Damp meters.
+- **No camera hijack**: entering the editor leaves the player's camera
+  exactly where it was (verified azimuth/polar unchanged); the compact drawer
+  leaves ~258 paintable sand points visible at the default view.
+- **Filters: 10 lenses** in a compact 2-column grid (short labels, full name
+  in the title): + **Comfort** (JWE-style composite — warmth × cover × clean;
+  score = the LIVE comfort stat, 89 verified) and **Enrichment** (Planet-Zoo
+  style — climbables/hides/dig space; score = the LIVE wellbeing.enrichment
+  meter, 87 verified). Main column redesigned: **score HERO on top** (big
+  number + status + tone-tinted progress ring with the filter's icon +
+  full-width bar + recommendation) with the verdict + View Details card
+  beneath. Minimap floor now draws the PAINTED material cells per cell.
+- typecheck + build + **402 tests**; Playwright: paint/persist/restore, all
+  10 lenses live, tool grid + tips, camera unchanged, sibling modes + fish
+  3D + 2D intact, **0 console errors**. Screenshots:
+  `screenshots/ui_reference_match/editor_v3_*.png`.
+
+## TERRAIN EDITOR v2: COMPACT + PAINT-TO-APPLY + EXACT LIVE FILTERS (v10.3) — 2026-07-02
+
+- **The editor box shrank to ~24% of the screen** (was ~42%): a 2-column tool
+  grid (Raise · Lower · Smooth · Erase · Paint + the Wet/Dry half-pair) beside
+  a TOOL-CONTEXTUAL right panel — sculpt tools show a context card (big tinted
+  icon, what the brush does, LIVE Relief-cm + Damp-% meters); the **materials
+  only appear on the Paint tool**. Select was CUT (it had no job the main
+  screen doesn't already do). Tabs stay exactly Terrain · Filters.
+- **Substrates apply by PAINTING, never by clicking**: a tile click only ARMS
+  the material (amber "Selected", hint "Drag on the sand to lay it down");
+  the Paint brush stroke commits it (applySubstrate → floor re-skins, save,
+  event, chime). Live-proven: click → save still `sahara_sand`; stroke →
+  `desert_clay` + "New substrate laid down". Apply/Revert buttons removed;
+  `previewSubstrate`/`revertSubstratePreview` deleted from the controller.
+- **Filters are now EXACT to the vivarium** — fields sample the same
+  collision/sim queries the gecko uses: hide interiors via
+  `sampleSurfaceAt().type === "hide"`, roof cover + lamp shade via
+  `hardTopAt`, blocked ground via `isFree` (marching-squares contours),
+  digging via the brush's own `sculptMask` + real slopes, traffic via a
+  BFS flood from the gecko, heat = the sim's coolC→baskingC gradient
+  (real °C), humidity = the exact wet-cell mask, and a **new CLEANLINESS
+  filter** reading the live dirt map (readout = env.cleanliness EXACTLY —
+  verified 15 = 15 — plus the real droppings count in the verdict). 8 filters
+  total; readouts + minimap refresh ~1×/s live and the wash drapes sculpted
+  dunes (`applyTerrain` on the analysis decal).
+- **AAA wash + minimap v2**: the on-tank wash renders blur-smoothed (no pixel
+  blocks) with value-shaped alpha and an edge fade before the glass; the
+  minimap is a real floor plan at 2× — substrate-toned base, the EXACT
+  hide-wall C-contours + rock silhouettes (solver polys), the water dish
+  tinted teal, wet patches, dirt, and the gecko as a live marker. A painted
+  wet patch appears in the same spot on the tank, the wash and the map.
+- Playwright-verified end to end: drawer 220px/24%, arm→paint flow, erase
+  cleanup, all 8 filters + live scores, tab exclusivity, sibling modes +
+  fish 3D + 2D intact, **0 console errors**. typecheck + build + **393
+  tests**. Screenshots: `screenshots/ui_reference_match/editor_v2_*.png`.
+
+## TERRAIN EDITOR: TWO TABS + FILTERS ANALYSIS + BRUSH CURSOR (v10.2) — 2026-07-02
+
+- The Terrain editor now matches the two FINAL reference images
+  (`Designs/Gecko/…04_54_24 PM.png` Terrain · `…04_54_42 PM.png` Filters) and
+  carries exactly **two tabs: Terrain · Filters** (the Decorate jump tab and
+  every other category tab are gone — those live elsewhere in the game).
+- **TERRAIN tab** — reference layout: single-column left tool stack **Select ·
+  Paint · Raise · Lower · Smooth · Erase** (+ a compact Wet/Dry pair keeping
+  the humidity brushes; all from the new pure registry
+  `src/data/terrainTools.ts`), the Materials photo tiles (label inside the
+  card outline per the new ref), the selected-substrate info card, and the
+  bottom row **Brush Size · Intensity % · ⚡ Brush Mode chip (Soft/Normal/
+  Strong — Strong = the bedrock/tall-dune limits) · round reset**. Tools are
+  REAL: sculpt strength = Intensity × mode (scene `sculptAt` gained
+  `strength`), **Erase = the reset brush** (flatten + dry in one stroke —
+  live-proven: relief 0.0056 → 0.00001, wet 0.0063 → 0), Select = inspect
+  (click the gecko → info card), Paint lays the selected material (habitat-
+  wide — substrate is one material today; per-cell painting is a marked TODO).
+- **In-world BRUSH CURSOR** (`TerrainBrushCursor` in ThreeTerrainOverlay):
+  soft white double ring sized to the brush radius + a green centre badge
+  carrying the active tool's glyph, draped on the substrate, hidden outside
+  the enclosure; the OS cursor hides over the sand. The editor auto-raises
+  the camera to the Top vantage on entry (floor visible above the drawer,
+  same pattern as Decorate) and re-anchors home on exit.
+- **FILTERS tab** — a real habitat-analysis system on the new pure registry
+  `src/data/habitatFilters.ts` (7 filters: Heat, Humidity, Hide Coverage,
+  Clutter, Dig Zones, Traffic Flow, Lighting — copy, tints, colour ramps,
+  legends, tips, recommendations; `filterStatus`/`scaleColor` unit-tested).
+  The scene paints a **soft draped analysis wash** over the habitat
+  (`AnalysisOverlay` — per-cell fields from the LIVE systems: basking zone,
+  wet map, decor volumes + hide interactions, sculpt mask + slopes, a
+  reachability flood from the gecko, lamp/UVB), with **Overlay Opacity /
+  Intensity** sliders and **Reset Filters**. Main content = score card
+  (live `filterReadout`: hidingSpots subscore, env bands, decor coverage,
+  diggable fraction, reach fraction, lamp+UVB) + status word + recommendation
+  + verdict sentence + **View Details** (opens the score breakdown), a
+  **gradient legend** + **top-down analysis minimap** (field + decor blobs),
+  and an ABOUT THIS FILTER panel with the amber TIPS card. All 7 filters
+  switch live (scores 92–100 on this thriving save, honestly derived).
+- Playwright-verified end to end: two tabs only, tool selection, materials
+  preview/apply intact, brush ring on the sand, all 7 filters + wash +
+  minimap + reset, Esc chains, sibling modes + fish 3D + 2D intact,
+  **0 console errors**. typecheck + build + **392 tests** (new
+  `filters.test.ts` 9, `terraintools.test.ts` 5). Screenshots:
+  `screenshots/ui_reference_match/editor_*.png`.
+
+## TERRAIN UI REFERENCE-MATCH + REAL SUBSTRATE MATERIALS (v10.1) — 2026-07-02
+
+- The Terrain drawer now matches its design reference (`Designs/Gecko/…03_04_31
+  PM (7).png`) instead of the old two-tab placeholder: **tab pills riding the
+  drawer's top edge** (Terrain active · Decorate jumps to Decorate mode), a
+  **floating 2-column sculpt-tool palette** (6 designed SVG icons — raise/
+  lower/smooth/flatten/wet/dry; active card = green-filled, reference-style),
+  an **always-visible MATERIALS row of 8 real photo tiles** (cropped from the
+  reference art itself into `public/assets/ui/terrain/`, food-card style),
+  a **selected-substrate info strip** (description · tag pills · five mini
+  stat meters Heat/Humidity/Digging/Clean/Bioactive · Apply/Revert CTA ·
+  "✓ Current" state), **slider pills** (designed brush-ring + intensity icons,
+  px/soft readouts), the ⚡ Strong chip and a **round brush-reset button**.
+  Drawer header: designed dune icon + "Shape the floor of your habitat." + a
+  live current-substrate chip (mini swatch + name).
+- **Substrates are REAL now, not "Coming soon"**: a data-driven registry
+  (`src/data/terrains.ts` — 8 terrains: Sahara Sand, Soft Dune Sand, Desert
+  Clay, Rocky Mix, Pebble Gravel, Dune Ridge unlocked for the desert;
+  Bioactive Soil + Mossy Soil locked "Future habitat" for humid builds) feeds
+  the tiles, the info strip, a **per-terrain procedural sand palette**
+  (`makeSandTexture(size, palette)`), the bedrock/skirt tint
+  (`retintSubstrateBed`), and the **ambient humidity model**
+  (`humidityBase + waterFrac·95·humidityHold` — Sahara 38%, Clay 41%,
+  Pebble 36%, live-verified through the stat strip).
+- **Preview → Apply → Revert** flow on a pure, tested `SubstrateSelection`
+  model (`src/ui/substrateSelection.ts`): clicking a tile re-skins the floor
+  live (amber "Previewing" state), Apply commits (layout.substrate gains
+  `terrainId`, event log "New substrate laid down: …", chime, save), Revert or
+  leaving the drawer restores the applied look; locked tiles are inspectable
+  (info + lock badge + honest note) but never preview or apply. The applied
+  terrain **persists through reload** (buildTerrarium reads `terrainId`; the
+  dropped-in `sand_substrate_01.png` override now only applies to the default
+  Sahara look). Terrain dock-card subtitle = live substrate name.
+- Playwright-verified: preview/apply/revert + Esc-revert live; Desert Clay
+  survived a cold reload; locked Mossy Soil refused honestly; sculpt brush +
+  hotkeys unchanged; feed/clean/decorate/animal-info/photo cycle intact; fish
+  3D + 2D aquarium untouched; **0 console errors**. typecheck + build +
+  **378 tests** (new `terrains.test.ts` 12, `substrate.test.ts` 9).
+  Screenshots: `screenshots/ui_reference_match/terrain_*.png`.
+
 ## SELF-MADE CREATURE BATCH v1 — 10 REAL ANIMALS (v10) — 2026-07-02
 
 - The first 10 self-made Tripo animals are REAL in-game creatures on a

@@ -7,18 +7,28 @@
  *  · Feeding Mode   — method list (Quick Feed / Place in Dish / Tong Feed),
  *    food photo-cards, QUANTITY stepper, SUPPLEMENT choice, NEXT FEEDING and
  *    a big green Start Feeding CTA.
- *  · Terrain Mode   — Terrain/Materials tabs, sculpt tool cards, material
- *    swatches, styled Brush Size + Intensity sliders and the ⚡ Strong brush.
+ *  · Terrain editor — TWO tabs riding the drawer's top edge (reference pair
+ *    in Designs/Gecko):
+ *      TERRAIN — left tool stack (Select · Paint · Raise · Lower · Smooth ·
+ *      Erase + the compact Wet/Dry pair, from src/data/terrainTools.ts), the
+ *      MATERIALS photo tiles (src/data/terrains.ts) with the selected-substrate
+ *      info strip, and Brush Size / Intensity / Brush Mode / reset controls.
+ *      FILTERS — analysis lenses (src/data/habitatFilters.ts): filter list,
+ *      score + info cards, gradient legend + top-down minimap, ABOUT + TIPS,
+ *      Overlay Opacity / Intensity / Reset Filters.
  *
  * One drawer is visible at a time (the app's mode machine decides). The class
  * keeps the old CareModeBar contract (mode/selected/radius/open/close/
- * setNote/selectIndex/adjustRadius/onDone/onStrong) so the app's pointer →
- * world plumbing is unchanged, and adds feed/clean action callbacks on top.
+ * setNote/selectIndex/adjustRadius/onDone) so the app's pointer → world
+ * plumbing is unchanged, and adds feed/clean/substrate/filter callbacks on top.
  */
 import type { FoodOption } from "../habitats/lizard/LizardController";
-import type { FeedingLogEntry } from "../habitats/HabitatTypes";
+import type { FeedingLogEntry, HabitatType } from "../habitats/HabitatTypes";
 import type { IntakeSummary } from "../habitats/lizard/LizardNutrition";
-import { ensureGwStyles, gwEl as el } from "./gwTheme";
+import { TERRAINS, terrainById, terrainUnlocked } from "../data/terrains";
+import { TERRAIN_TOOLS, toolById } from "../data/terrainTools";
+import { HABITAT_FILTERS, filterById } from "../data/habitatFilters";
+import { ensureGwStyles, gwEl as el, gwProgressRing } from "./gwTheme";
 import { gwIcon, type GwIconName } from "./gwIcons";
 
 export type CareMode = "clean" | "feed" | "terrain";
@@ -87,27 +97,46 @@ const CLEAN_TOOLS: (ToolDef & { action?: CleanAction })[] = [
   { key: "wipe", icon: "🪟", svg: "pane", tint: "#7fd8d4", label: "Wipe Glass", desc: "Drag across the front pane" },
 ];
 
-const TERRAIN_TOOLS: ToolDef[] = [
-  { key: "raise", icon: "⛰️", label: "Raise", desc: "Pile the sand up" },
-  { key: "lower", icon: "🕳️", label: "Lower", desc: "Dig a depression" },
-  { key: "smooth", icon: "〰️", label: "Smooth", desc: "Relax bumps" },
-  { key: "flatten", icon: "▭", label: "Flatten", desc: "Back to level" },
-  { key: "water", icon: "💧", label: "Paint Wet", desc: "Damp patch — humidity" },
-  { key: "dry", icon: "☀️", label: "Dry", desc: "Dry a wet patch" },
-];
+/** What the app pushes so the Materials row renders honestly. `selectedId` is
+ *  the ARMED material (highlighted; the Paint brush lays it down) — selecting
+ *  never touches the world. */
+export interface MaterialViewState {
+  habitat: HabitatType;
+  appliedId: string;
+  selectedId: string;
+}
 
-/** Material swatches (reference row). Desert Sand is the live substrate; the
- *  rest are visual previews until substrate painting ships. */
-const MATERIALS: { key: string; label: string; tint: string; live: boolean }[] = [
-  { key: "desert_sand", label: "Desert Sand", tint: "#c8a067", live: true },
-  { key: "fine_sand", label: "Fine Sand", tint: "#d9bc8c", live: false },
-  { key: "clay_mix", label: "Clay Mix", tint: "#9c6a4a", live: false },
-  { key: "rocky_soil", label: "Rocky Soil", tint: "#7d6a55", live: false },
-  { key: "pebble_mix", label: "Pebble Mix", tint: "#8f8578", live: false },
-  { key: "leaf_litter", label: "Leaf Litter", tint: "#6d5c33", live: false },
-  { key: "slate_edge", label: "Slate Edge", tint: "#5a6068", live: false },
-  { key: "dune_ridge", label: "Dune Ridge", tint: "#c2925a", live: false },
-];
+/** Live terrain readouts for the tool-context card (non-paint tools). */
+export interface TerrainInfo {
+  /** Tallest dune above level (cm). */
+  reliefCm: number;
+  /** Deepest dig below level (cm, positive number). */
+  deepCm: number;
+  /** Damp-patch coverage of the floor (0..100 %). */
+  wetPct: number;
+  /** Elevation profile across the tank's centre line (metres, ± around level). */
+  profile: number[];
+}
+
+/** Which pane of the Terrain editor is showing. */
+export type TerrainTab = "terrain" | "filters";
+
+/** Brush strength modes (the reference's ⚡ Brush Mode chip). Strong also
+ *  engages the tall-dune + dig-to-bedrock limits. */
+export type BrushMode = "soft" | "normal" | "strong";
+const BRUSH_MODES: BrushMode[] = ["soft", "normal", "strong"];
+const BRUSH_MODE_LABEL: Record<BrushMode, string> = { soft: "Soft", normal: "Normal", strong: "Strong" };
+/** Sculpt-strength multiplier per mode (× the Intensity slider). */
+const BRUSH_MODE_SCALE: Record<BrushMode, number> = { soft: 0.55, normal: 1, strong: 1.45 };
+
+/** Live numbers the app pushes for the selected filter's score/info cards. */
+export interface FilterReadout {
+  id: string;
+  score: number;
+  word: string;
+  tone: "good" | "warn" | "bad";
+  detail: string;
+}
 
 /** Quantity 1–12; the caption mirrors the reference ("10 → Medium"). */
 function portionName(n: number): string {
@@ -123,8 +152,10 @@ export class GwCareDrawers {
   private _mode: CareMode | null = null;
   private _selected = "";
   private _radius = 0.24;
-  private _intensity = 1;
-  private _strong = false;
+  /** Sculpt intensity 0.1..1 (the reference's % slider). */
+  private _intensity = 0.8;
+  private _brushMode: BrushMode = "normal";
+  private _terrainTab: TerrainTab = "terrain";
   private _portion = 10;
   private _method: FeedMethod = "quick";
   private _rail: RailKey = "quick";
@@ -163,15 +194,55 @@ export class GwCareDrawers {
 
   // Terrain widgets.
   private terrainCards = new Map<string, HTMLButtonElement>();
-  private matCards = new Map<string, HTMLButtonElement>();
-  private strongBtn!: HTMLButtonElement;
+  private matTiles = new Map<string, { root: HTMLButtonElement; sub: HTMLElement }>();
+  private modeChip!: HTMLButtonElement;
+  private modeChipVal!: HTMLElement;
   private intenInput!: HTMLInputElement;
   private intenRead!: HTMLElement;
   private terrainNote!: HTMLElement;
-  private tabTerrain!: HTMLButtonElement;
-  private tabMaterials!: HTMLButtonElement;
-  private terrainToolsWrap!: HTMLElement;
-  private materialsWrap!: HTMLElement;
+  private matInfoEl!: HTMLElement;
+  private matState: MaterialViewState | null = null;
+  private toolContextEl!: HTMLElement;
+  private paintPanel!: HTMLElement;
+  private ctxPeakV: HTMLElement | null = null;
+  private ctxDeepV: HTMLElement | null = null;
+  private ctxWetV: HTMLElement | null = null;
+  private ctxProfile: HTMLCanvasElement | null = null;
+  private lastTerrainInfo: TerrainInfo = { reliefCm: 0, deepCm: 0, wetPct: 0, profile: [] };
+  private materialSelectCb: ((id: string) => void) | null = null;
+  private toolChangeCb: ((id: string) => void) | null = null;
+
+  // Terrain editor tabs + Filters widgets.
+  private tabBtns = new Map<TerrainTab, HTMLButtonElement>();
+  private paneTerrain!: HTMLElement;
+  private paneFilters!: HTMLElement;
+  private filterRows = new Map<string, HTMLButtonElement>();
+  private filterTitle!: HTMLElement;
+  private filterDesc!: HTMLElement;
+  private filterScoreCap!: HTMLElement;
+  private filterScoreNum!: HTMLElement;
+  private filterScoreSt!: HTMLElement;
+  private filterScoreBar!: HTMLElement;
+  private filterRing: ReturnType<typeof gwProgressRing> | null = null;
+  private filterRec!: HTMLElement;
+  private filterInfoTx!: HTMLElement;
+  private filterAboutA!: HTMLElement;
+  private filterAboutB!: HTMLElement;
+  private filterTips!: HTMLElement;
+  private legendBar!: HTMLElement;
+  private legendLow!: HTMLElement;
+  private legendHigh!: HTMLElement;
+  private minimapWrap!: HTMLElement;
+  private opacityInput!: HTMLInputElement;
+  private opacityRead!: HTMLElement;
+  private fIntenInput!: HTMLInputElement;
+  private fIntenRead!: HTMLElement;
+  private terrainTabCb: ((tab: TerrainTab) => void) | null = null;
+  private filterSelectCb: ((id: string) => void) | null = null;
+  private filterOpacityCb: ((frac: number) => void) | null = null;
+  private filterIntensityCb: ((frac: number) => void) | null = null;
+  private filtersResetCb: (() => void) | null = null;
+  private viewDetailsCb: (() => void) | null = null;
 
   constructor() {
     ensureGwStyles();
@@ -598,91 +669,544 @@ export class GwCareDrawers {
   // ── Terrain Mode ──────────────────────────────────────────────────────
 
   private buildTerrain(): void {
-    const { drawer, head } = this.drawerShell("Terrain Mode", "⛰️", "Sculpt the sand & substrate");
+    // Headerless (reference): the two tabs ride the top edge; ✕ / Esc / the
+    // slim nav exit the editor. `gw-tight` keeps the box compact.
+    const drawer = el("div", "gw-bottom-drawer gw-tight gw-hidden");
     this.terrainEl = drawer;
+    this.root.append(drawer);
 
-    // Tabs.
-    const tabs = el("div", "gw-seg");
-    this.tabTerrain = el("button", "gw-active", "Terrain") as HTMLButtonElement;
-    this.tabMaterials = el("button", undefined, "Materials") as HTMLButtonElement;
-    this.tabTerrain.addEventListener("click", () => this.showTerrainTab(true));
-    this.tabMaterials.addEventListener("click", () => this.showTerrainTab(false));
-    tabs.append(this.tabTerrain, this.tabMaterials);
-    head.append(tabs, this.doneButton("✓ Done"));
-    head.insertBefore(el("span"), null);
+    const x = el("button", "gw-x", "✕") as HTMLButtonElement;
+    x.title = "Close (Esc)";
+    x.style.cssText = "position:absolute;top:10px;right:12px;z-index:2;";
+    x.addEventListener("click", () => this.doneCb?.());
+    drawer.append(x);
 
-    // Terrain tools.
-    this.terrainToolsWrap = el("div", "gw-tool-row");
+    // The Terrain editor's ONLY two tabs (reference): Terrain · Filters.
+    const tabs = el("div", "gw-drawer-tabs");
+    const mkTab = (tab: TerrainTab, icon: GwIconName, label: string): HTMLButtonElement => {
+      const b = el("button", "gw-drawer-tab") as HTMLButtonElement;
+      b.append(gwIcon(icon, 17), document.createTextNode(label));
+      b.querySelector(".gw-ic")?.classList.add("ic");
+      b.addEventListener("click", () => this.setTerrainTab(tab, true));
+      this.tabBtns.set(tab, b);
+      return b;
+    };
+    tabs.append(mkTab("terrain", "mound", "Terrain"), mkTab("filters", "sliders", "Filters"));
+    drawer.append(tabs);
+
+    this.paneTerrain = el("div");
+    this.paneFilters = el("div");
+    this.buildTerrainPane(this.paneTerrain);
+    this.buildFiltersPane(this.paneFilters);
+    drawer.append(this.paneTerrain, this.paneFilters);
+    this.applyTerrainTab();
+  }
+
+  /** TERRAIN pane: 2-column tool grid + a tool-contextual right panel (sculpt
+   *  tools → context card with live terrain readouts; Paint → the Materials
+   *  tiles + armed-material info) + brush controls. */
+  private buildTerrainPane(host: HTMLElement): void {
+    const grid = el("div", "gw-terrain-grid");
+
+    // Left: the 4×2 tool grid (registry-driven) — every tool a full-size card.
+    const palette = el("div", "gw-tool-palette");
     for (const t of TERRAIN_TOOLS) {
-      const card = el("button", "gw-tool-card") as HTMLButtonElement;
-      const trow = el("div", "trow");
-      trow.append(el("span", "ic", t.icon), el("span", "nm", t.label));
-      card.append(trow, el("div", "ds", t.desc), el("span", "check", "✓"));
-      card.addEventListener("click", () => this.select(t.key));
-      this.terrainCards.set(t.key, card);
-      this.terrainToolsWrap.append(card);
+      const card = el("button", "gw-tool-mini") as HTMLButtonElement;
+      card.title = t.description;
+      card.append(gwIcon(t.icon as GwIconName, 18), document.createTextNode(t.label));
+      card.querySelector(".gw-ic")?.classList.add("ic");
+      const ic = card.querySelector(".ic") as HTMLElement | null;
+      if (ic) ic.style.color = t.tint;
+      card.addEventListener("click", () => this.select(t.id));
+      this.terrainCards.set(t.id, card);
+      palette.append(card);
     }
-    drawer.append(this.terrainToolsWrap);
 
-    // Materials swatches.
-    this.materialsWrap = el("div", "gw-scroll-x gw-hidden");
-    for (const m of MATERIALS) {
-      const card = el("button", "gw-item-card") as HTMLButtonElement;
-      card.style.cssText = "flex:0 0 118px;";
-      const art = el("span", "art");
-      art.style.background = `radial-gradient(circle at 38% 30%, ${m.tint}, ${shade(m.tint)} 85%)`;
-      art.append(el("span", undefined, m.live ? "" : "🔒"));
-      card.append(art, el("span", "nm", m.label), el("span", "ds", m.live ? "Current substrate" : "Coming soon"), el("span", "check", "✓"));
-      if (!m.live) card.disabled = true;
-      else card.classList.add("gw-active");
-      this.matCards.set(m.key, card);
-      this.materialsWrap.append(card);
+    // Right: swaps per tool — context card OR the Paint materials panel.
+    const right = el("div");
+    right.style.cssText = "flex:1;display:flex;flex-direction:column;gap:7px;min-width:0;justify-content:center;";
+    this.toolContextEl = el("div", "gw-tool-context");
+    this.paintPanel = el("div", "gw-hidden");
+    this.paintPanel.style.cssText = "display:flex;flex-direction:column;gap:7px;min-width:0;";
+    const matRow = el("div", "gw-mat-row");
+    for (const t of TERRAINS) {
+      const tile = el("button", "gw-mat-tile") as HTMLButtonElement;
+      const ph = el("span", "ph");
+      const img = el("img") as HTMLImageElement;
+      img.src = t.swatch;
+      img.alt = t.name;
+      img.loading = "lazy";
+      const lk = el("span", "lk gw-hidden");
+      lk.append(gwIcon("lock", 11));
+      lk.querySelector(".gw-ic")?.classList.add("ic");
+      ph.append(img, lk, el("span", "check", "✓"));
+      const sub = el("span", "sub", "");
+      tile.append(ph, el("span", "nm", t.name), sub);
+      tile.addEventListener("click", () => this.materialSelectCb?.(t.id));
+      this.matTiles.set(t.id, { root: tile, sub });
+      matRow.append(tile);
     }
-    drawer.append(this.materialsWrap);
+    this.matInfoEl = el("div", "gw-mat-info");
+    this.paintPanel.append(matRow, this.matInfoEl);
+    right.append(this.toolContextEl, this.paintPanel);
+    grid.append(palette, right);
+    host.append(grid);
 
-    // Sliders + Strong.
+    // Brush Size · Intensity % · Brush Mode · guidance · reset (reference row).
     const foot = el("div");
-    foot.style.cssText = "display:flex;align-items:center;gap:20px;margin-top:12px;flex-wrap:wrap;";
+    foot.style.cssText = "display:flex;align-items:center;gap:12px;margin-top:10px;";
     foot.append(this.brushSizeSlider());
 
-    const inten = el("div", "gw-slider");
+    const inten = el("div", "gw-slider pill");
     const ilbl = el("span", "lbl");
-    ilbl.append(el("span", undefined, "◉"), document.createTextNode("Intensity"));
+    ilbl.append(gwIcon("intensity", 16), document.createTextNode("Intensity"));
+    ilbl.querySelector(".gw-ic")?.classList.add("ic");
     this.intenInput = el("input") as HTMLInputElement;
     this.intenInput.type = "range";
-    this.intenInput.min = "1";
-    this.intenInput.max = "3";
-    this.intenInput.step = "1";
-    this.intenInput.value = "1";
-    this.intenRead = el("span", "rd", "Soft");
+    this.intenInput.min = "10";
+    this.intenInput.max = "100";
+    this.intenInput.step = "10";
+    this.intenInput.value = "80";
+    this.intenRead = el("span", "rd", "80%");
     this.intenInput.addEventListener("input", () => {
-      this._intensity = Number(this.intenInput.value);
-      this.intenRead.textContent = ["Soft", "Normal", "Strong"][this._intensity - 1];
+      this._intensity = Number(this.intenInput.value) / 100;
+      this.intenRead.textContent = `${this.intenInput.value}%`;
     });
     inten.append(ilbl, this.intenInput, this.intenRead);
     foot.append(inten);
 
-    this.strongBtn = el("button", "gw-chip", "⚡ Strong brush") as HTMLButtonElement;
-    this.strongBtn.title = "Taller dunes + digging down to the bedrock (the tank floor is never breached)";
-    this.strongBtn.addEventListener("click", () => this.setStrong(!this._strong));
-    foot.append(this.strongBtn);
+    // Brush Mode chip (Soft → Normal → Strong; Strong also unlocks the tall
+    // dunes + dig-to-bedrock limits).
+    this.modeChip = el("button", "gw-mode-chip") as HTMLButtonElement;
+    this.modeChip.title = "Brush strength — Strong also digs to the bedrock (the tank floor is never breached)";
+    this.modeChip.append(gwIcon("bolt", 15), el("span", "lb", "Brush Mode"));
+    this.modeChip.querySelector(".gw-ic")?.classList.add("ic");
+    this.modeChipVal = el("span", "vl", BRUSH_MODE_LABEL[this._brushMode]);
+    this.modeChip.append(this.modeChipVal, el("span", "car", "›"));
+    this.modeChip.addEventListener("click", () => {
+      const next = BRUSH_MODES[(BRUSH_MODES.indexOf(this._brushMode) + 1) % BRUSH_MODES.length];
+      this.setBrushMode(next);
+    });
+    foot.append(this.modeChip);
 
     this.terrainNote = el("span", "gw-drawer-sub", "Drag over the sand to sculpt it.");
+    this.terrainNote.style.cssText = "flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
     foot.append(this.terrainNote);
-    drawer.append(foot);
+
+    const reset = el("button", "gw-icon-button sm") as HTMLButtonElement;
+    reset.title = "Reset brush settings";
+    reset.append(gwIcon("reset", 17));
+    reset.addEventListener("click", () => {
+      this._radius = 0.24;
+      this._intensity = 0.8;
+      this.intenInput.value = "80";
+      this.intenRead.textContent = "80%";
+      this.setBrushMode("normal");
+      this.syncBrushSliders();
+    });
+    foot.append(reset);
+    host.append(foot);
   }
 
-  private showTerrainTab(terrain: boolean): void {
-    this.tabTerrain.classList.toggle("gw-active", terrain);
-    this.tabMaterials.classList.toggle("gw-active", !terrain);
-    this.terrainToolsWrap.classList.toggle("gw-hidden", !terrain);
-    this.materialsWrap.classList.toggle("gw-hidden", terrain);
+  /** FILTERS pane: filter list, score/info cards, legend + minimap, ABOUT +
+   *  TIPS, and the Overlay Opacity / Intensity / Reset Filters row. */
+  private buildFiltersPane(host: HTMLElement): void {
+    const grid = el("div", "gw-filter-grid");
+
+    // Left: the lens grid (2 columns of compact icon chips, JWE-style).
+    const listWrap = el("div", "gw-filter-list");
+    const cap = el("div", "gw-section-title", "Filters");
+    cap.style.margin = "0 0 3px";
+    listWrap.append(cap);
+    for (const f of HABITAT_FILTERS) {
+      const row = el("button", "gw-filter-row") as HTMLButtonElement;
+      row.title = f.name;
+      row.append(gwIcon(f.icon as GwIconName, 14), document.createTextNode(f.short));
+      row.querySelector(".gw-ic")?.classList.add("ic");
+      const ic = row.querySelector(".ic") as HTMLElement | null;
+      if (ic) ic.style.color = f.tint;
+      row.addEventListener("click", () => this.filterSelectCb?.(f.id));
+      this.filterRows.set(f.id, row);
+      listWrap.append(row);
+    }
+
+    // Main column: the SCORE HERO on top (big number + status + tinted ring),
+    // then the verdict + View Details card beneath.
+    const main = el("div", "gw-filter-main");
+    this.filterTitle = el("div", "gw-filter-title");
+    this.filterDesc = el("div", "gw-filter-desc");
+    const scoreCard = el("div", "gw-fcard hero");
+    this.filterScoreCap = el("div", "cap", "Score");
+    const srow = el("div", "scorerow");
+    this.filterScoreNum = el("span", "num", "—");
+    this.filterScoreSt = el("span", "st", "");
+    const ringwrap = el("span", "ringwrap");
+    this.filterRing = gwProgressRing(44, 5);
+    ringwrap.append(this.filterRing.root);
+    srow.append(this.filterScoreNum, this.filterScoreSt, ringwrap);
+    const bar = el("div", "gw-bar");
+    this.filterScoreBar = el("i");
+    bar.append(this.filterScoreBar);
+    this.filterRec = el("div", "rec", "");
+    scoreCard.append(this.filterScoreCap, srow, bar, this.filterRec);
+    const infoCard = el("div", "gw-fcard");
+    const inf = el("div", "info");
+    this.filterInfoTx = el("span", undefined, "");
+    inf.append(gwIcon("leaf", 16), this.filterInfoTx);
+    inf.querySelector(".gw-ic")?.classList.add("ic");
+    const vd = el("button", "gw-row-btn") as HTMLButtonElement;
+    vd.append(el("span", undefined, "View Details"), el("span", "chev", "›"));
+    vd.addEventListener("click", () => this.viewDetailsCb?.());
+    infoCard.append(inf, vd);
+    main.append(this.filterTitle, this.filterDesc, scoreCard, infoCard);
+
+    const mapCol = el("div", "gw-filter-map");
+    this.legendBar = el("div", "gw-legend-bar");
+    const caps = el("div", "gw-legend-caps");
+    this.legendLow = el("span", undefined, "Low");
+    this.legendHigh = el("span", undefined, "High");
+    caps.append(this.legendLow, this.legendHigh);
+    this.minimapWrap = el("div", "gw-filter-minimap");
+    mapCol.append(this.legendBar, caps, this.minimapWrap);
+
+    const about = el("div", "gw-filter-about");
+    about.append(el("div", "cap", "About this filter"));
+    this.filterAboutA = el("p");
+    this.filterAboutB = el("p");
+    const tips = el("div", "gw-tips");
+    const tcap = el("div", "cap");
+    tcap.append(gwIcon("sparkle", 12), document.createTextNode("Tips"));
+    tcap.querySelector(".gw-ic")?.classList.add("ic");
+    this.filterTips = el("div", "tx");
+    tips.append(tcap, this.filterTips);
+    about.append(this.filterAboutA, this.filterAboutB, tips);
+
+    grid.append(listWrap, main, mapCol, about);
+    host.append(grid);
+
+    // Overlay Opacity · Intensity · Reset Filters (reference row).
+    const foot = el("div");
+    foot.style.cssText = "display:flex;align-items:center;gap:12px;margin-top:10px;";
+    const mkPct = (
+      label: string,
+      icon: GwIconName,
+      init: number,
+      onInput: (frac: number) => void,
+    ): { wrap: HTMLElement; input: HTMLInputElement; read: HTMLElement } => {
+      const wrap = el("div", "gw-slider pill");
+      const lbl = el("span", "lbl");
+      lbl.append(gwIcon(icon, 16), document.createTextNode(label));
+      lbl.querySelector(".gw-ic")?.classList.add("ic");
+      const input = el("input") as HTMLInputElement;
+      input.type = "range";
+      input.min = "10";
+      input.max = "100";
+      input.step = "5";
+      input.value = String(init);
+      const read = el("span", "rd", `${init}%`);
+      input.addEventListener("input", () => {
+        read.textContent = `${input.value}%`;
+        onInput(Number(input.value) / 100);
+      });
+      wrap.append(lbl, input, read);
+      return { wrap, input, read };
+    };
+    const op = mkPct("Overlay Opacity", "brushring", 60, (f) => this.filterOpacityCb?.(f));
+    this.opacityInput = op.input;
+    this.opacityRead = op.read;
+    const fi = mkPct("Intensity", "intensity", 80, (f) => this.filterIntensityCb?.(f));
+    this.fIntenInput = fi.input;
+    this.fIntenRead = fi.read;
+    foot.append(op.wrap, fi.wrap, el("span"));
+    (foot.lastElementChild as HTMLElement).style.flex = "1";
+
+    const reset = el("button", "gw-reset-pill") as HTMLButtonElement;
+    reset.append(gwIcon("reset", 15), document.createTextNode("Reset Filters"));
+    reset.querySelector(".gw-ic")?.classList.add("ic");
+    reset.addEventListener("click", () => this.filtersResetCb?.());
+    foot.append(reset);
+    host.append(foot);
+  }
+
+  // ── Terrain editor tabs + brush mode ──────────────────────────────────
+
+  private setTerrainTab(tab: TerrainTab, notify = false): void {
+    if (this._terrainTab !== tab) {
+      this._terrainTab = tab;
+      this.applyTerrainTab();
+      if (notify) this.terrainTabCb?.(tab);
+    }
+  }
+
+  private applyTerrainTab(): void {
+    for (const [k, b] of this.tabBtns) b.classList.toggle("gw-active", k === this._terrainTab);
+    this.paneTerrain.classList.toggle("gw-hidden", this._terrainTab !== "terrain");
+    this.paneFilters.classList.toggle("gw-hidden", this._terrainTab !== "filters");
+  }
+
+  private setBrushMode(mode: BrushMode): void {
+    this._brushMode = mode;
+    this.modeChipVal.textContent = BRUSH_MODE_LABEL[mode];
+    this.modeChip.classList.toggle("strong", mode === "strong");
+    this.strongCb?.(mode === "strong");
+  }
+
+  /** Swap the right panel per tool: Paint shows the materials, everything else
+   *  shows the tool-context card. */
+  private updateTerrainRight(): void {
+    const tool = toolById(this._selected);
+    const paint = tool?.action === "paintMaterial";
+    this.paintPanel.classList.toggle("gw-hidden", !paint);
+    this.toolContextEl.classList.toggle("gw-hidden", !!paint);
+    if (!paint && tool) this.renderToolContext(tool.id);
+  }
+
+  /** The context card: big tinted tool icon, name, what the brush does, three
+   *  LIVE terrain chips (peak / deepest / damp), a live ELEVATION PROFILE of
+   *  the floor's centre line, and a husbandry tip. */
+  private renderToolContext(toolId: string): void {
+    const t = toolById(toolId);
+    if (!t) return;
+    const row = el("div", "row");
+    const big = el("span", "big");
+    big.append(gwIcon(t.icon as GwIconName, 23, t.tint));
+    big.querySelector(".gw-ic")?.classList.add("ic");
+    const tx = el("div", "tx");
+    tx.append(el("div", "nm", t.label), el("div", "ds", t.note));
+
+    const chips = el("div", "chips");
+    const chip = (label: string, tint: string): { root: HTMLElement; v: HTMLElement } => {
+      const c = el("span", "chip");
+      const v = el("span", "v", "—");
+      v.style.color = tint;
+      c.append(el("span", "k", label), v);
+      return { root: c, v };
+    };
+    const peak = chip("Peak", "#8ce25a");
+    const deep = chip("Deepest", "#f0b64b");
+    const damp = chip("Damp", "#57b8ff");
+    this.ctxPeakV = peak.v;
+    this.ctxDeepV = deep.v;
+    this.ctxWetV = damp.v;
+    chips.append(peak.root, deep.root, damp.root);
+    row.append(big, tx, chips);
+
+    // Live elevation profile (dunes + digs along the tank's centre line).
+    const profile = el("div", "profile");
+    this.ctxProfile = el("canvas") as HTMLCanvasElement;
+    this.ctxProfile.width = 560;
+    this.ctxProfile.height = 92;
+    profile.append(this.ctxProfile, el("span", "lbl", "Elevation profile"));
+
+    const tip = el("div", "tip");
+    tip.append(gwIcon("sparkle", 12), document.createTextNode(t.tip));
+    tip.querySelector(".gw-ic")?.classList.add("ic");
+
+    this.toolContextEl.replaceChildren(row, profile, tip);
+    this.setTerrainInfo(this.lastTerrainInfo);
+  }
+
+  /** Live terrain readouts for the context card (chips + elevation profile). */
+  setTerrainInfo(info: TerrainInfo): void {
+    this.lastTerrainInfo = info;
+    if (this.ctxPeakV) this.ctxPeakV.textContent = `+${info.reliefCm.toFixed(1)} cm`;
+    if (this.ctxDeepV) this.ctxDeepV.textContent = `−${info.deepCm.toFixed(1)} cm`;
+    if (this.ctxWetV) this.ctxWetV.textContent = `${Math.round(info.wetPct)}%`;
+    const c = this.ctxProfile;
+    const ctx = c?.getContext("2d");
+    if (!c || !ctx || info.profile.length < 2) return;
+    const W = c.width;
+    const H = c.height;
+    ctx.clearRect(0, 0, W, H);
+    // ±24 cm plotted around the vertical midline; level = dotted midline.
+    const yFor = (h: number): number => H / 2 - (h / 0.24) * (H / 2 - 8);
+    ctx.strokeStyle = "rgba(255,255,255,0.16)";
+    ctx.setLineDash([4, 5]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, H / 2);
+    ctx.lineTo(W, H / 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Filled dune silhouette.
+    ctx.beginPath();
+    ctx.moveTo(0, yFor(info.profile[0]));
+    for (let i = 1; i < info.profile.length; i++) {
+      ctx.lineTo((i / (info.profile.length - 1)) * W, yFor(info.profile[i]));
+    }
+    ctx.lineTo(W, H);
+    ctx.lineTo(0, H);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, "rgba(216, 189, 140, 0.5)");
+    g.addColorStop(1, "rgba(216, 189, 140, 0.08)");
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.strokeStyle = "#d8bd8c";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(0, yFor(info.profile[0]));
+    for (let i = 1; i < info.profile.length; i++) {
+      ctx.lineTo((i / (info.profile.length - 1)) * W, yFor(info.profile[i]));
+    }
+    ctx.stroke();
+  }
+
+  /** Render the Materials row + armed-material info line from live state.
+   *  Selecting a tile only ARMS it — the Paint brush lays it down. */
+  setMaterialState(s: MaterialViewState): void {
+    this.matState = s;
+    for (const [id, tile] of this.matTiles) {
+      const t = terrainById(id);
+      if (!t) continue;
+      const unlocked = terrainUnlocked(t, s.habitat);
+      const applied = id === s.appliedId;
+      const armed = id === s.selectedId && !applied && unlocked;
+      tile.root.classList.toggle("gw-applied", applied);
+      tile.root.classList.toggle("gw-armed", armed);
+      tile.root.classList.toggle("gw-locked", !unlocked);
+      tile.root.querySelector(".lk")!.classList.toggle("gw-hidden", unlocked);
+      tile.sub.textContent = applied ? "Current" : armed ? "Selected" : unlocked ? "" : "Future habitat";
+      tile.root.title = unlocked ? t.description : `${t.name} unlocks with future humid habitats.`;
+    }
+    this.renderMaterialInfo(s);
+  }
+
+  /** The armed-material info line: swatch, name + state, description, tags,
+   *  stat meters, and the paint hint (no buttons — the BRUSH applies). */
+  private renderMaterialInfo(s: MaterialViewState): void {
+    const t = terrainById(s.selectedId) ?? terrainById(s.appliedId);
+    if (!t) return;
+    const unlocked = terrainUnlocked(t, s.habitat);
+    const applied = t.id === s.appliedId;
+
+    const sw = el("span", "sw");
+    const img = el("img") as HTMLImageElement;
+    img.src = t.swatch;
+    img.alt = "";
+    sw.append(img);
+
+    const tx = el("div", "tx");
+    const nm = el("div", "nm", t.name);
+    tx.append(nm, el("div", "ds", t.description));
+
+    const tags = el("div", "tags");
+    for (const tag of t.tags) tags.append(el("span", "gw-pill", tag));
+
+    const meters = el("div", "meters");
+    const meter = (label: string, frac: number, tone?: "blue" | "amber"): HTMLElement => {
+      const m = el("div", "gw-mat-meter");
+      const bar = el("div", `gw-bar${tone ? ` ${tone}` : ""}`);
+      const fill = el("i");
+      fill.style.width = `${Math.round(frac * 100)}%`;
+      bar.append(fill);
+      m.append(el("span", "k", label), bar);
+      return m;
+    };
+    meters.append(
+      meter("Heat", t.stats.heat, "amber"),
+      meter("Humidity", t.stats.humidity, "blue"),
+      meter("Digging", t.stats.digging),
+      meter("Clean", t.stats.cleanliness),
+      meter("Bioactive", t.stats.bioactive),
+    );
+
+    const cta = el("div", "cta");
+    const badge = (cls: string, text: string, icon?: GwIconName): HTMLElement => {
+      const b = el("span", `gw-badge ${cls}`);
+      b.style.marginTop = "0";
+      if (icon) b.append(gwIcon(icon, 11));
+      b.append(document.createTextNode(text));
+      return b;
+    };
+    if (!unlocked) cta.append(badge("amber", "Unlocks with future humid habitats", "lock"));
+    else if (applied) cta.append(badge("green", "✓ Current substrate"));
+    else cta.append(badge("amber", "Drag on the sand to lay it down", "paint"));
+
+    this.matInfoEl.replaceChildren(sw, tx, tags, meters, cta);
+  }
+
+  onMaterialSelect(cb: (id: string) => void): void {
+    this.materialSelectCb = cb;
+  }
+  /** Terrain ↔ Filters tab switched by the player. */
+  onTerrainTab(cb: (tab: TerrainTab) => void): void {
+    this.terrainTabCb = cb;
+  }
+  /** A sculpt/select/paint tool was picked (the brush cursor follows it). */
+  onToolChange(cb: (id: string) => void): void {
+    this.toolChangeCb = cb;
+  }
+  onFilterSelect(cb: (id: string) => void): void {
+    this.filterSelectCb = cb;
+  }
+  onFilterOpacity(cb: (frac: number) => void): void {
+    this.filterOpacityCb = cb;
+  }
+  onFilterIntensity(cb: (frac: number) => void): void {
+    this.filterIntensityCb = cb;
+  }
+  onFiltersReset(cb: () => void): void {
+    this.filtersResetCb = cb;
+  }
+  onViewDetails(cb: () => void): void {
+    this.viewDetailsCb = cb;
+  }
+
+  /** Render the FILTERS pane's static copy + sliders from the app's state. */
+  setFilterState(s: { id: string; opacity: number; intensity: number }): void {
+    for (const [k, b] of this.filterRows) b.classList.toggle("gw-active", k === s.id);
+    const f = filterById(s.id);
+    if (!f) return;
+    this.filterTitle.replaceChildren(gwIcon(f.icon as GwIconName, 18, f.tint), document.createTextNode(f.name));
+    this.filterTitle.querySelector(".gw-ic")?.classList.add("ic");
+    this.filterDesc.textContent = f.description;
+    const short = f.name.split(" ").pop() ?? f.name;
+    this.filterScoreCap.textContent = `${short} Score`;
+    this.filterRec.textContent = f.recommendation;
+    this.filterAboutA.textContent = f.about[0];
+    this.filterAboutB.textContent = f.about[1];
+    this.filterTips.textContent = f.tips;
+    this.legendLow.textContent = f.legend.low;
+    this.legendHigh.textContent = f.legend.high;
+    this.legendBar.style.background = `linear-gradient(90deg, ${f.scale
+      .map((st) => `${st.color} ${Math.round(st.t * 100)}%`)
+      .join(", ")})`;
+    if (this.filterRing) this.filterRing.center.replaceChildren(gwIcon(f.icon as GwIconName, 15, f.tint));
+    this.opacityInput.value = String(Math.round(s.opacity * 100));
+    this.opacityRead.textContent = `${Math.round(s.opacity * 100)}%`;
+    this.fIntenInput.value = String(Math.round(s.intensity * 100));
+    this.fIntenRead.textContent = `${Math.round(s.intensity * 100)}%`;
+  }
+
+  /** Live score + status + info-sentence for the selected filter. */
+  setFilterReadout(r: FilterReadout): void {
+    const toneCls = r.tone === "good" ? "" : r.tone === "warn" ? " warn" : " bad";
+    const toneColor = r.tone === "good" ? "#8ce25a" : r.tone === "warn" ? "#f0b64b" : "#ef7a5e";
+    this.filterScoreNum.textContent = String(Math.round(r.score));
+    this.filterScoreNum.className = `num${toneCls}`;
+    this.filterScoreSt.textContent = r.word;
+    this.filterScoreSt.className = `st${toneCls}`;
+    this.filterScoreBar.style.width = `${Math.max(0, Math.min(100, Math.round(r.score)))}%`;
+    if (this.filterRing) {
+      this.filterRing.set(r.score);
+      // The ring's fill stroke reads --gw-green from its root — tint per tone.
+      this.filterRing.root.style.setProperty("--gw-green", toneColor);
+    }
+    this.filterInfoTx.textContent = r.detail;
+  }
+
+  /** Show the scene's top-down analysis map in the minimap frame. */
+  setFilterMap(c: HTMLCanvasElement | null): void {
+    this.minimapWrap.replaceChildren();
+    if (c) this.minimapWrap.append(c);
   }
 
   private brushSizeSlider(): HTMLElement {
-    const wrap = el("div", "gw-slider");
+    const wrap = el("div", "gw-slider pill");
     const lbl = el("span", "lbl");
-    lbl.append(el("span", undefined, "⭕"), document.createTextNode("Brush Size"));
+    lbl.append(gwIcon("brushring", 16), document.createTextNode("Brush Size"));
+    lbl.querySelector(".gw-ic")?.classList.add("ic");
     const input = el("input") as HTMLInputElement;
     input.type = "range";
     input.min = "0.1";
@@ -720,11 +1244,24 @@ export class GwCareDrawers {
   get radius(): number {
     return this._radius;
   }
+  /** Sculpt intensity as a fraction 0.1..1 (the % slider). */
   get intensity(): number {
     return this._intensity;
   }
+  get brushMode(): BrushMode {
+    return this._brushMode;
+  }
+  /** Strong mode unlocks the tall-dune + dig-to-bedrock limits. */
   get strong(): boolean {
-    return this._strong;
+    return this._brushMode === "strong";
+  }
+  /** Effective sculpt strength: intensity % × the brush-mode multiplier. */
+  get sculptStrength(): number {
+    return this._intensity * BRUSH_MODE_SCALE[this._brushMode];
+  }
+  /** Which Terrain-editor pane is showing (terrain | filters). */
+  get terrainTab(): TerrainTab {
+    return this._terrainTab;
   }
 
   mount(parent: HTMLElement): void {
@@ -736,12 +1273,6 @@ export class GwCareDrawers {
   }
   onStrong(cb: (on: boolean) => void): void {
     this.strongCb = cb;
-  }
-
-  setStrong(on: boolean): void {
-    this._strong = on;
-    this.strongBtn.classList.toggle("gw-active", on);
-    this.strongCb?.(on);
   }
 
   open(mode: CareMode, foods: FoodOption[] = []): void {
@@ -759,8 +1290,10 @@ export class GwCareDrawers {
       this.setSupplement(this._supplement);
       this.feedEl.classList.remove("gw-hidden");
     } else {
+      // The editor always opens on the Terrain pane with the Raise brush.
+      this.setTerrainTab("terrain");
       this.select("raise");
-      this.showTerrainTab(true);
+      if (this.matState) this.setMaterialState(this.matState);
       this.terrainEl.classList.remove("gw-hidden");
     }
   }
@@ -803,15 +1336,26 @@ export class GwCareDrawers {
             : "Drag over the sand to scrub the grime away.";
       this.cleanNote.style.color = "";
     }
+    // Contextual guidance per terrain tool, the right panel swaps (context
+    // card ↔ Paint materials), and the brush cursor follows the tool.
+    if (this._mode === "terrain" && this.terrainNote) {
+      const tool = toolById(key);
+      if (tool) {
+        this.terrainNote.textContent = tool.note;
+        this.terrainNote.style.color = "";
+        this.updateTerrainRight();
+        this.toolChangeCb?.(key);
+      }
+    }
   }
 
-  /** Select the Nth selectable chip in the open drawer (1–6 hotkeys). */
+  /** Select the Nth selectable chip in the open drawer (1–8 hotkeys). */
   selectIndex(i: number): void {
     const keys =
       this._mode === "feed"
         ? Array.from(this.foodCards.keys())
         : this._mode === "terrain"
-          ? TERRAIN_TOOLS.map((t) => t.key)
+          ? TERRAIN_TOOLS.map((t) => t.id)
           : CLEAN_TOOLS.filter((t) => !t.action).map((t) => t.key);
     if (i >= 0 && i < keys.length) this.select(keys[i]);
   }
@@ -843,14 +1387,4 @@ function agoLabel(seconds: number): string {
   if (s < 60) return `${s}s ago`;
   if (s < 3600) return `${Math.round(s / 60)}m ago`;
   return `${(s / 3600).toFixed(1)}h ago`;
-}
-
-/** Darken a #rrggbb tint for the swatch gradient edge. */
-function shade(hex: string): string {
-  const n = parseInt(hex.slice(1), 16);
-  const f = (v: number): number => Math.max(0, Math.round(v * 0.45));
-  const r = f((n >> 16) & 255);
-  const g = f((n >> 8) & 255);
-  const b = f(n & 255);
-  return `rgb(${r},${g},${b})`;
 }

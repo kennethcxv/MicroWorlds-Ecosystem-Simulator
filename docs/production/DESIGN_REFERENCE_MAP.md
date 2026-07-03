@@ -13,7 +13,8 @@
 | 2 | `ChatGPT Image Jul 1, 2026, 03_04_30 PM (6).png` | Gecko Main Gameplay (variant) | Secondary (stat-item anatomy: label + bar + status + %) |
 | 3 | `ChatGPT Image Jul 1, 2026, 03_22_09 PM.png` | **Cleaning Mode** | PRIMARY for clean |
 | 4 | `ChatGPT Image Jul 1, 2026, 02_57_21 PM.png` | **Feeding Mode** | PRIMARY for feed |
-| 5 | `ChatGPT Image Jul 1, 2026, 03_04_31 PM (7).png` | **Terrain Mode** | PRIMARY for terrain |
+| 5a | `ChatGPT Image Jul 2, 2026, 04_54_24 PM.png` | **Terrain editor — Terrain tab** | PRIMARY (FINAL, replaces the removed Jul 1 03_04_31 (7) image) |
+| 5b | `ChatGPT Image Jul 2, 2026, 04_54_42 PM.png` | **Terrain editor — Filters tab** | PRIMARY (FINAL) |
 | 6 | `ChatGPT Image Jul 1, 2026, 03_04_30 PM (4).png` | **Decorate Mode** (shown on aquarium) | PRIMARY for decorate (gecko + aquarium) |
 | 7 | `ChatGPT Image Jul 1, 2026, 02_12_27 PM (6).png` | **Animal Info panel** (over gecko main) | PRIMARY for animal-info; secondary for dock subtitles + corner buttons |
 | 8 | `ChatGPT Image Jul 1, 2026, 03_04_31 PM (8).png` | **Photo / Minimal View** | PRIMARY for photo mode |
@@ -77,19 +78,45 @@ dish). Additions beyond the ref: ✕ close, 🎬 Cinematic button (full-screen
 letterboxed eating cam), and Track Intake renders a real feeding log + diet
 balance in the right pane.
 
-### 4. Terrain Mode — `03_04_31 PM (7).png`
-**Copy:** tab row on the drawer top edge (Terrain [active] · Decorate · Plants ·
-Rocks · Substrate · Caves · Filters · Decor → ours: Terrain active + jump-to-
-Decorate tab); floating left tool palette (Select, Raise [active], Lower,
-Smooth, Flatten, Paint, Erase — 2-col grid of small cards); "Materials" row of
-8 texture swatch cards (Desert Sand ✓, Fine Sand, Clay Mix, Rocky Soil, Pebble
-Mix, Leaf Litter, Slate Edge, Dune Ridge); bottom styled sliders: Brush Size
-(px readout) + Intensity (% readout) + reset circle button; brush ring in sand.
-**Don't copy:** the garbled AI tool labels ("Emash", "Prant"); duplicate
-Lower/Paint entries.
-**Note:** materials are cosmetic swatches this pass (sculpt tools are real; the
-material system paints the brush tint/wet where supported — no new terrain
-physics).
+### 4. Terrain editor — `Jul 2 04_54_24 PM.png` (Terrain) + `04_54_42 PM.png` (Filters) — ✅ FULL MATCH (v10.2)
+**The editor has exactly TWO tabs: Terrain · Filters** (the Jul 1 ref's
+Decorate/Plants/Rocks/… category tabs belong to other screens and were
+removed per the final direction; the old Jul 1 terrain image is gone from
+`Designs/Gecko/`).
+**Terrain tab (copied):** single-column left tool stack Select · Paint ·
+Raise [green-filled active] · Lower · Smooth · Erase (+ our compact Wet/Dry
+pair keeping the humidity brushes; registry `src/data/terrainTools.ts`);
+Materials photo tiles with the label INSIDE the card outline (cropped from
+the Jul 1 ref art, `public/assets/ui/terrain/*.png`), selected = green
+outline + ✓, locked = dim + padlock + "Future habitat"; selected-substrate
+info card (desc/tags/5 stat meters/✓ Current/Apply/Revert); bottom pills
+Brush Size (cm readout — ref says px; ours is honest world-space) ·
+Intensity % · **⚡ Brush Mode chip Soft/Normal/Strong** (Strong = bedrock
+limits) · round reset; the **in-world brush cursor** (white double ring +
+green tool-glyph badge on the substrate). Tools are real: Erase =
+flatten+dry reset brush; Select = inspect (gecko → info card); Paint lays
+the selected material habitat-wide (per-cell painting TODO).
+**Filters tab (copied):** left FILTERS list (Heat/Humidity/Hide Coverage/
+Clutter/Dig Zones/Traffic Flow/Lighting — per-filter icon tints, active
+green); main content (caps title + description, "<X> Score" card with big
+number/status/green bar/"Recommended: …", verdict info card + View Details ›
+→ the score breakdown flyout); gradient legend (Low/High) over a **top-down
+analysis minimap** (live field + decor blobs); ABOUT THIS FILTER + amber
+TIPS card; bottom Overlay Opacity/Intensity pills + ↺ Reset Filters. The
+habitat itself gets the soft **AnalysisOverlay wash** (draped decal, live
+fields from zones/wet map/decor/reachability/lamp; registry colour ramps;
+`src/data/habitatFilters.ts`).
+**Deliberate deviations:** the editor auto-raises the camera to the Top
+vantage while open (our content-rich drawer would otherwise hide the floor
+the ref shows; re-anchors on exit) + a small ✕ close button.
+**v10.3 refinements (user direction):** the drawer compacted to ~24% of the
+screen — a 2-col tool grid with a TOOL-CONTEXTUAL right panel (materials
+only on Paint; sculpt tools get a context card with live Relief/Damp
+meters); Select cut; substrates apply by PAINTING only (tile click = arm);
+filters grew to 8 (+ Cleanliness from the live dirt map), all fields exact
+to the collision/sim data, refreshing ~1 s; the wash is blur-smoothed with
+a glass-edge fade; the minimap is a true 2× floor plan (exact contours,
+dish tint, live gecko marker).
 
 ### 5. Decorate Mode — `03_04_30 PM (4).png` (pattern applies to gecko too, per #5's tab row)
 **Copy:** bottom tray: category tab row (Decorate [mode tab] + Plants / Rocks /

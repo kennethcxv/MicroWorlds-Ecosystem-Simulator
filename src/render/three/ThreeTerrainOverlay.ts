@@ -5,6 +5,11 @@
  *   - `GroundOverlay` — a transparent canvas decal just above the sand that draws
  *     the DIRT map (warm dark blotches) and WATER patches (teal wet sheen), so
  *     grime + wet patches read exactly where the sim says they are,
+ *   - `AnalysisOverlay` — the FILTERS tab's soft colour wash (heat / humidity /
+ *     hide coverage / …): a second draped decal painted from a per-cell field
+ *     through a registry colour ramp, with opacity + contrast controls,
+ *   - `TerrainBrushCursor` — Terrain Mode's in-world brush: a soft white ring
+ *     sized to the brush radius + a green centre badge showing the tool glyph,
  *   - `SparkleBurst` — a tiny star-points celebration when the tank is spotless.
  */
 import * as THREE from "three";
@@ -12,6 +17,8 @@ import type { HabitatDimensions } from "../../habitats/HabitatTypes";
 import type { Terrain } from "../../habitats/HabitatTerrain";
 import { terrainHeightAt } from "../../habitats/HabitatTerrain";
 import type { DirtMap } from "../../habitats/lizard/LizardDirtSystem";
+import { scaleColor, type FilterColorStop } from "../../data/habitatFilters";
+import type { CursorGlyph } from "../../data/terrainTools";
 
 /** Re-displace the sand plane: baked dune noise + sculpted terrain heights. */
 export function applyTerrainToSand(sand: THREE.Mesh, terrain: Terrain, dims: HabitatDimensions): void {
@@ -142,6 +149,352 @@ export class GroundOverlay {
     this.tex.dispose();
     (this.mesh.material as THREE.Material).dispose();
     this.mesh.geometry.dispose();
+  }
+}
+
+/** World-space value field sampled by the analysis overlay (0 = legend low,
+ *  1 = legend high). */
+export type AnalysisField = (x: number, z: number) => number;
+
+/**
+ * The FILTERS tab's habitat wash: a second draped decal (same footprint as the
+ * dirt overlay) painted from a per-cell field through a filter's colour ramp.
+ * Low-res canvas + linear filtering keep the wash soft and blended, so the
+ * habitat art reads through it. Opacity = the Overlay Opacity slider;
+ * intensity = contrast exaggeration around the ramp's midpoint.
+ */
+export class AnalysisOverlay {
+  readonly mesh: THREE.Mesh;
+  private canvas: HTMLCanvasElement;
+  private off: HTMLCanvasElement;
+  private tex: THREE.CanvasTexture;
+  private dims: HabitatDimensions;
+  private mat: THREE.MeshBasicMaterial;
+
+  constructor(dims: HabitatDimensions, groundY: number, inset = 0.01) {
+    this.dims = dims;
+    // Field cells render on a small offscreen; the display canvas gets a
+    // blur-scaled copy + an edge vignette so the wash reads soft + game-like.
+    this.off = document.createElement("canvas");
+    this.off.width = 120;
+    this.off.height = 76;
+    this.canvas = document.createElement("canvas");
+    this.canvas.width = 300;
+    this.canvas.height = 190;
+    this.tex = new THREE.CanvasTexture(this.canvas);
+    this.tex.colorSpace = THREE.SRGBColorSpace;
+    const innerW = dims.width - dims.glass * 2 - inset * 2;
+    const innerD = dims.depth - dims.glass * 2 - inset * 2;
+    const geo = new THREE.PlaneGeometry(innerW, innerD, 72, 48);
+    geo.rotateX(-Math.PI / 2);
+    this.mat = new THREE.MeshBasicMaterial({
+      map: this.tex,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.6,
+    });
+    this.mesh = new THREE.Mesh(geo, this.mat);
+    this.mesh.position.y = groundY + 0.006; // just above the dirt decal
+    this.mesh.renderOrder = 3;
+    this.mesh.visible = false;
+    this.mesh.userData.analysisOverlay = true;
+  }
+
+  /** Drape over the sculpted terrain (same field as the sand + dirt decal). */
+  applyTerrain(terrain: Terrain): void {
+    const pos = this.mesh.geometry.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      pos.setY(i, terrainHeightAt(terrain, this.dims, pos.getX(i), pos.getZ(i)));
+    }
+    pos.needsUpdate = true;
+  }
+
+  /** Repaint from a field + colour ramp. `intensity` (0..1) exaggerates the
+   *  contrast around the ramp midpoint (the Filters Intensity slider). The
+   *  wash is blur-smoothed, extremes read slightly stronger than neutral
+   *  values, and the edges fade before the glass. */
+  paint(field: AnalysisField, scale: FilterColorStop[], intensity: number): void {
+    const octx = this.off.getContext("2d");
+    const ctx = this.canvas.getContext("2d");
+    if (!octx || !ctx) return;
+    const OW = this.off.width;
+    const OH = this.off.height;
+    const contrast = 0.55 + intensity * 0.9;
+    const img = octx.createImageData(OW, OH);
+    const data = img.data;
+    for (let iz = 0; iz < OH; iz++) {
+      for (let ix = 0; ix < OW; ix++) {
+        const x = ((ix + 0.5) / OW - 0.5) * this.dims.width;
+        const z = ((iz + 0.5) / OH - 0.5) * this.dims.depth;
+        const raw = Math.max(0, Math.min(1, field(x, z)));
+        const t = Math.max(0, Math.min(1, 0.5 + (raw - 0.5) * contrast));
+        const c = parseInt(scaleColor(scale, t).slice(1), 16);
+        const i4 = (iz * OW + ix) * 4;
+        data[i4] = (c >> 16) & 255;
+        data[i4 + 1] = (c >> 8) & 255;
+        data[i4 + 2] = c & 255;
+        // Extremes pop; neutral mid-values stay lighter so the art shows through.
+        data[i4 + 3] = Math.round(168 + 80 * Math.abs(t - 0.5) * 2);
+      }
+    }
+    octx.putImageData(img, 0, 0);
+
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.save();
+    ctx.filter = "blur(2.2px)";
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(this.off, -3, -3, W + 6, H + 6);
+    ctx.restore();
+    // Edge vignette: the wash breathes out before the glass walls.
+    const fade = (x0: number, y0: number, x1: number, y1: number): void => {
+      const g = ctx.createLinearGradient(x0, y0, x1, y1);
+      g.addColorStop(0, "rgba(0,0,0,1)");
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    };
+    ctx.globalCompositeOperation = "destination-out";
+    const m = 14;
+    fade(0, 0, m, 0);
+    fade(W, 0, W - m, 0);
+    fade(0, 0, 0, m * 0.8);
+    fade(0, H, 0, H - m * 0.8);
+    ctx.globalCompositeOperation = "source-over";
+    this.tex.needsUpdate = true;
+  }
+
+  setOpacity(o: number): void {
+    this.mat.opacity = Math.max(0, Math.min(1, o));
+  }
+
+  setVisible(v: boolean): void {
+    this.mesh.visible = v;
+  }
+
+  get visible(): boolean {
+    return this.mesh.visible;
+  }
+
+  dispose(): void {
+    this.tex.dispose();
+    this.mat.dispose();
+    this.mesh.geometry.dispose();
+  }
+}
+
+/**
+ * Terrain Mode's in-world brush cursor (reference): a soft white double ring
+ * sized to the brush radius + a small green centre badge carrying the active
+ * tool's glyph. Flat on the substrate, follows the pointer, never a debug gizmo.
+ */
+export class TerrainBrushCursor {
+  readonly group: THREE.Group;
+  private ring: THREE.Mesh;
+  private badge: THREE.Mesh;
+  private badgeTex: THREE.CanvasTexture | null = null;
+  private ringMat: THREE.MeshBasicMaterial;
+  private glyphShown: CursorGlyph | null = null;
+
+  constructor() {
+    this.group = new THREE.Group();
+    this.group.visible = false;
+    this.group.renderOrder = 8;
+
+    // Soft white ring with a faint outer glow + a fainter inner ring.
+    const rc = document.createElement("canvas");
+    rc.width = rc.height = 256;
+    const rctx = rc.getContext("2d")!;
+    const ringAt = (r: number, w: number, a: number, blur: number): void => {
+      rctx.save();
+      rctx.strokeStyle = `rgba(255, 252, 240, ${a})`;
+      rctx.lineWidth = w;
+      rctx.shadowColor = "rgba(255, 248, 220, 0.9)";
+      rctx.shadowBlur = blur;
+      rctx.beginPath();
+      rctx.arc(128, 128, r, 0, Math.PI * 2);
+      rctx.stroke();
+      rctx.restore();
+    };
+    ringAt(108, 5, 0.85, 14);
+    ringAt(88, 2.5, 0.4, 8);
+    const ringTex = new THREE.CanvasTexture(rc);
+    ringTex.colorSpace = THREE.SRGBColorSpace;
+    this.ringMat = new THREE.MeshBasicMaterial({
+      map: ringTex,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.9,
+    });
+    this.ring = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.ringMat);
+    this.ring.rotation.x = -Math.PI / 2;
+
+    // Centre badge: green disc, glyph drawn per tool in setGlyph.
+    this.badge = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.12, 0.12),
+      new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false }),
+    );
+    this.badge.rotation.x = -Math.PI / 2;
+    this.badge.position.y = 0.004;
+    this.group.add(this.ring, this.badge);
+    this.setGlyph("up");
+  }
+
+  /** Redraw the centre badge for a tool glyph (cached per glyph). */
+  setGlyph(glyph: CursorGlyph): void {
+    if (this.glyphShown === glyph) return;
+    this.glyphShown = glyph;
+    const c = document.createElement("canvas");
+    c.width = c.height = 96;
+    const ctx = c.getContext("2d")!;
+    ctx.clearRect(0, 0, 96, 96);
+    // Green disc with a soft glow + subtle rim.
+    ctx.save();
+    ctx.shadowColor = "rgba(120, 220, 80, 0.9)";
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = "#54b03c";
+    ctx.beginPath();
+    ctx.arc(48, 48, 30, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(48, 48, 30, 0, Math.PI * 2);
+    ctx.stroke();
+    // Glyph in white.
+    ctx.strokeStyle = "#ffffff";
+    ctx.fillStyle = "#ffffff";
+    ctx.lineWidth = 6;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    const arrow = (up: boolean): void => {
+      const dir = up ? -1 : 1;
+      ctx.beginPath();
+      ctx.moveTo(48, 48 - 14 * dir);
+      ctx.lineTo(48, 48 + 13 * dir);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(37, 48 + 2 * dir);
+      ctx.lineTo(48, 48 + 14 * dir);
+      ctx.lineTo(59, 48 + 2 * dir);
+      ctx.stroke();
+    };
+    switch (glyph) {
+      case "up":
+        arrow(true);
+        break;
+      case "down":
+        arrow(false);
+        break;
+      case "wave":
+        ctx.beginPath();
+        ctx.moveTo(33, 44);
+        ctx.quadraticCurveTo(40, 36, 48, 44);
+        ctx.quadraticCurveTo(56, 52, 63, 44);
+        ctx.moveTo(33, 56);
+        ctx.quadraticCurveTo(40, 48, 48, 56);
+        ctx.quadraticCurveTo(56, 64, 63, 56);
+        ctx.stroke();
+        break;
+      case "cross":
+        ctx.beginPath();
+        ctx.moveTo(38, 38);
+        ctx.lineTo(58, 58);
+        ctx.moveTo(58, 38);
+        ctx.lineTo(38, 58);
+        ctx.stroke();
+        break;
+      case "flat":
+        ctx.lineWidth = 5.5;
+        ctx.beginPath();
+        ctx.moveTo(34, 58);
+        ctx.lineTo(62, 58);
+        ctx.stroke();
+        ctx.lineWidth = 4.5;
+        ctx.beginPath();
+        ctx.moveTo(42, 36);
+        ctx.lineTo(42, 50);
+        ctx.moveTo(37, 46);
+        ctx.lineTo(42, 51);
+        ctx.lineTo(47, 46);
+        ctx.moveTo(54, 36);
+        ctx.lineTo(54, 50);
+        ctx.moveTo(49, 46);
+        ctx.lineTo(54, 51);
+        ctx.lineTo(59, 46);
+        ctx.stroke();
+        break;
+      case "drop":
+        ctx.beginPath();
+        ctx.moveTo(48, 33);
+        ctx.quadraticCurveTo(60, 50, 60, 56);
+        ctx.arc(48, 56, 12, 0, Math.PI, false);
+        ctx.quadraticCurveTo(36, 50, 48, 33);
+        ctx.fill();
+        break;
+      case "sun":
+        ctx.beginPath();
+        ctx.arc(48, 48, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 4;
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(48 + Math.cos(a) * 14, 48 + Math.sin(a) * 14);
+          ctx.lineTo(48 + Math.cos(a) * 20, 48 + Math.sin(a) * 20);
+          ctx.stroke();
+        }
+        break;
+      case "brush":
+        ctx.beginPath();
+        ctx.moveTo(58, 34);
+        ctx.lineTo(46, 48);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(44, 50);
+        ctx.quadraticCurveTo(36, 52, 34, 62);
+        ctx.quadraticCurveTo(44, 62, 48, 54);
+        ctx.closePath();
+        ctx.fill();
+        break;
+      case "box":
+        ctx.lineWidth = 4.5;
+        ctx.setLineDash([7, 6]);
+        ctx.strokeRect(34, 34, 28, 28);
+        ctx.setLineDash([]);
+        break;
+    }
+    this.badgeTex?.dispose();
+    this.badgeTex = new THREE.CanvasTexture(c);
+    this.badgeTex.colorSpace = THREE.SRGBColorSpace;
+    const mat = this.badge.material as THREE.MeshBasicMaterial;
+    mat.map = this.badgeTex;
+    mat.needsUpdate = true;
+  }
+
+  /** Place at world (x, groundY, z) with the ring sized to the brush radius.
+   *  `active` brightens the ring while the player is stroking. */
+  show(x: number, groundY: number, z: number, radius: number, active: boolean): void {
+    this.group.position.set(x, groundY + 0.01, z);
+    const d = Math.max(0.12, radius * 2);
+    this.ring.scale.set(d, d, 1);
+    this.ringMat.opacity = active ? 1 : 0.82;
+    this.group.visible = true;
+  }
+
+  hide(): void {
+    this.group.visible = false;
+  }
+
+  dispose(): void {
+    this.ringMat.map?.dispose();
+    this.ringMat.dispose();
+    this.badgeTex?.dispose();
+    (this.badge.material as THREE.Material).dispose();
+    this.ring.geometry.dispose();
+    this.badge.geometry.dispose();
   }
 }
 

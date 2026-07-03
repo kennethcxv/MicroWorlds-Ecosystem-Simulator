@@ -14,7 +14,10 @@ import { LizardHud } from "./ui/lizardHud";
 import { HabitatEditorPanel } from "./ui/habitatEditor";
 import { AnimalInfoPanel } from "./ui/animalInfo";
 import { ShortcutsOverlay } from "./ui/careModes";
-import { GwCareDrawers, type CleanAction } from "./ui/gwDrawers";
+import { GwCareDrawers, type CleanAction, type TerrainTab } from "./ui/gwDrawers";
+import { SubstrateSelection } from "./ui/substrateSelection";
+import { terrainById, terrainUnlocked } from "./data/terrains";
+import { toolById } from "./data/terrainTools";
 import { sfx } from "./render/sfx";
 import { GwModeMachine, regionsFor, type GwMode } from "./ui/gwModes";
 import type { Controller } from "./ui/controller";
@@ -40,6 +43,12 @@ export class GlasswaterApp {
   private drawers: GwCareDrawers;
   private helpSheet: ShortcutsOverlay;
   private careStroking = false;
+  // Terrain editor: Materials preview/apply state (pure, tested) + the
+  // Filters tab's selection, and a per-stroke latch for the Paint tool.
+  private substrateSel: SubstrateSelection | null = null;
+  private filterSel = { id: "hide_coverage", opacity: 0.6, intensity: 0.8 };
+  private paintedThisStroke = false;
+  private filterRefreshT = 0;
 
   private last = 0;
   private uiAccum = 0;
@@ -128,6 +137,29 @@ export class GlasswaterApp {
       else c.feedHover({ x: 0, z: 0.2 }, m);
     });
     this.drawers.onCleanAction((a) => this.cleanAction(a));
+    // Terrain editor: Materials row (arming only — the Paint brush applies).
+    this.drawers.onMaterialSelect((id) => this.materialSelect(id));
+    // Terrain editor: the Terrain ↔ Filters tabs + the Filters tab's controls.
+    this.drawers.onTerrainTab((tab) => this.terrainTabChanged(tab));
+    this.drawers.onToolChange(() => this.three?.controller?.clearTerrainHover());
+    this.drawers.onFilterSelect((id) => {
+      this.filterSel.id = id;
+      this.applyFilterSel();
+    });
+    this.drawers.onFilterOpacity((f) => {
+      this.filterSel.opacity = f;
+      this.three?.controller?.setAnalysisOpacity(f);
+    });
+    this.drawers.onFilterIntensity((f) => {
+      this.filterSel.intensity = f;
+      this.three?.controller?.setAnalysisIntensity(f);
+    });
+    this.drawers.onFiltersReset(() => {
+      this.filterSel = { id: "hide_coverage", opacity: 0.6, intensity: 0.8 };
+      this.applyFilterSel();
+      this.drawers.setNote("Filters reset — Hide Coverage at default strength.", false);
+    });
+    this.drawers.onViewDetails(() => this.lizardHud.openDetails());
     this.helpSheet = new ShortcutsOverlay();
     this.helpSheet.mount(this.layout.root);
 
@@ -164,8 +196,8 @@ export class GlasswaterApp {
       const lizardLive = this.tankMode === "3d" && this.habitat === "lizard" && this.state.screen === "aquarium" && !this.editing;
       if (!lizardLive) return;
       if (this.drawers.mode) {
-        // Inside a drawer mode: 1–6 pick the card, [ ] size the brush, Enter done.
-        if (e.key >= "1" && e.key <= "6") this.drawers.selectIndex(Number(e.key) - 1);
+        // Inside a drawer mode: 1–8 pick the card, [ ] size the brush, Enter done.
+        if (e.key >= "1" && e.key <= "8") this.drawers.selectIndex(Number(e.key) - 1);
         else if (e.key === "[") this.drawers.adjustRadius(-1);
         else if (e.key === "]") this.drawers.adjustRadius(1);
         else if (e.key === "Enter") this.uiMode.escape();
@@ -267,12 +299,30 @@ export class GlasswaterApp {
           dish: c.dishInfo(),
           presenting: c.presentationActive(),
         });
+        // Terrain: fresh Materials selection state from the applied substrate;
+        // the editor always opens on the Terrain pane with no analysis wash.
+        if (r.drawer === "terrain") {
+          this.substrateSel = new SubstrateSelection(c.substrateInfo().id);
+          this.pushMaterialState();
+          c.setAnalysisFilter(null);
+          c.clearTerrainHover();
+        }
       }
       this.three?.setLeftOrbit(false); // left = the brush/drop; middle/right = camera
     } else {
       this.drawers.close();
       this.careStroking = false;
       if (next !== "decorate") this.three?.setLeftOrbit(true);
+    }
+
+    // Leaving terrain → the analysis wash + brush cursor clear and the OS
+    // cursor comes back. The camera is NEVER hijacked by this editor — the
+    // player's view stays exactly where they left it.
+    if (prev === "terrain" && next !== "terrain") {
+      this.substrateSel = null;
+      c?.setAnalysisFilter(null);
+      c?.clearTerrainHover();
+      if (this.three) this.three.canvas.style.cursor = "";
     }
 
     // Cinematic: the scene drives its follow camera + the HUD letterboxes.
@@ -322,6 +372,66 @@ export class GlasswaterApp {
     } else {
       this.drawers.setNote(`⚠ ${res.reason ?? "Couldn't serve."}`, true);
     }
+  }
+
+  // ── Terrain editor: tabs + Filters ─────────────────────────────────────────
+
+  /** Terrain ↔ Filters tab: the analysis wash exists only while Filters shows. */
+  private terrainTabChanged(tab: TerrainTab): void {
+    const c = this.three?.controller;
+    if (!c) return;
+    if (tab === "filters") {
+      c.clearTerrainHover();
+      if (this.three) this.three.canvas.style.cursor = "";
+      this.applyFilterSel();
+    } else {
+      c.setAnalysisFilter(null);
+    }
+  }
+
+  /** Apply the selected filter to the world + mirror it into the drawer
+   *  (list highlight, copy, score/info cards, legend, minimap, sliders). */
+  private applyFilterSel(): void {
+    const c = this.three?.controller;
+    if (!c || this.uiMode.mode !== "terrain" || this.drawers.terrainTab !== "filters") return;
+    c.setAnalysisFilter(this.filterSel.id);
+    c.setAnalysisOpacity(this.filterSel.opacity);
+    c.setAnalysisIntensity(this.filterSel.intensity);
+    this.drawers.setFilterState(this.filterSel);
+    this.drawers.setFilterReadout(c.filterReadout(this.filterSel.id));
+    this.drawers.setFilterMap(c.filterMapCanvas());
+  }
+
+  // ── Terrain Mode: Materials row (preview → apply / revert) ────────────────
+
+  /** Mirror the pure selection state into the drawer's tiles + info line. */
+  private pushMaterialState(): void {
+    const c = this.three?.controller;
+    const sel = this.substrateSel;
+    if (!c || !sel) return;
+    this.drawers.setMaterialState({
+      habitat: c.substrateInfo().habitat,
+      appliedId: sel.appliedId,
+      selectedId: sel.inspectedId,
+    });
+  }
+
+  /** A material tile was clicked: ARM it for the Paint brush (never touches
+   *  the world) or explain the lock — the pure SubstrateSelection decides. */
+  private materialSelect(id: string): void {
+    const c = this.three?.controller;
+    const sel = this.substrateSel;
+    const t = terrainById(id);
+    if (!c || !sel || !t) return;
+    const action = sel.select(id, terrainUnlocked(t, c.substrateInfo().habitat));
+    if (action === "preview") {
+      this.drawers.setNote(`${t.name} selected — drag on the sand to lay it down.`, false);
+    } else if (action === "applied") {
+      this.drawers.setNote(`${t.name} already lines the habitat.`, false);
+    } else {
+      this.drawers.setNote(`${t.name} unlocks with future humid habitats.`, false);
+    }
+    this.pushMaterialState();
   }
 
   /** One-click cleaning cards (Replace Water / Remove Waste) — each a real
@@ -384,6 +494,16 @@ export class GlasswaterApp {
             dish: c.dishInfo(),
             presenting: c.presentationActive(),
           });
+        } else if (this.uiMode.mode === "terrain") {
+          // Live editor readouts: the tool-context meters every tick, the
+          // Filters score/minimap ~1×/s (the wash itself repaints scene-side).
+          this.drawers.setTerrainInfo(c.terrainInfo());
+          this.filterRefreshT += 0.08;
+          if (this.drawers.terrainTab === "filters" && this.filterRefreshT >= 1) {
+            this.filterRefreshT = 0;
+            this.drawers.setFilterReadout(c.filterReadout(this.filterSel.id));
+            this.drawers.setFilterMap(c.filterMapCanvas());
+          }
         }
         if (this.animalInfoOpen) this.animalPanel.update(info);
       }
@@ -518,6 +638,7 @@ export class GlasswaterApp {
           if (e.button !== 0 || !this.drawers.mode || e.target !== three.canvas) return;
           e.stopImmediatePropagation();
           this.careStroking = true;
+          this.paintedThisStroke = false;
           // The scrub SOUND runs for as long as the tool is dragged (the
           // squeegee adds its own throttled squeaks on top).
           if (this.drawers.mode === "clean") sfx.brushStart();
@@ -536,6 +657,19 @@ export class GlasswaterApp {
       window.addEventListener("pointerup", () => {
         this.careStroking = false;
         sfx.brushStop();
+        // A finished PAINT stroke commits its bookkeeping (dominant substrate,
+        // bed tint, humidity blend, one event, save) + refreshes the tiles.
+        if (this.paintedThisStroke) {
+          this.paintedThisStroke = false;
+          const c = this.three?.controller;
+          if (c) {
+            c.paintStrokeEnd();
+            sfx.done();
+            this.pushMaterialState();
+            const name = terrainById(this.substrateSel?.inspectedId ?? "")?.name ?? "Substrate";
+            this.drawers.setNote(`${name} painted in. ✨`, false);
+          }
+        }
       });
 
       // POINTER FEEDBACK over the vivarium — never just a bare cursor: in feed
@@ -584,13 +718,25 @@ export class GlasswaterApp {
           const over = !!g && Math.hypot(g.x - gp.x, g.z - gp.z) < 0.2;
           c.setGeckoHover(over);
           three.canvas.style.cursor = over ? "pointer" : "";
-        } else if (mode !== "terrain") {
+        } else if (mode === "terrain") {
+          // The in-world BRUSH CURSOR rides the pointer on the Terrain pane
+          // (soft ring + green tool glyph); the Filters pane never edits.
+          const tool = this.drawers.terrainTab === "terrain" ? toolById(this.drawers.selected) : null;
+          if (g && tool) {
+            const shown = c.terrainHover(g, this.drawers.radius, tool.cursorGlyph, this.careStroking);
+            three.canvas.style.cursor = shown ? "none" : "";
+          } else {
+            c.clearTerrainHover();
+            three.canvas.style.cursor = "";
+          }
+        } else {
           three.canvas.style.cursor = "";
         }
       });
       three.canvas.addEventListener("pointerleave", () => {
         three.controller?.clearFeedHover();
         three.controller?.clearCleanHover();
+        three.controller?.clearTerrainHover();
         three.canvas.style.cursor = "";
       });
 
@@ -667,11 +813,41 @@ export class GlasswaterApp {
         );
       }
     } else {
-      // Intensity = extra brush passes per stroke sample (1–3).
-      for (let i = 0; i < this.drawers.intensity; i++) {
-        c.sculptAt(this.drawers.selected as never, g.x, g.z, this.drawers.radius);
+      // Terrain editor: the Filters tab never edits; tools act per their
+      // registry definition (paint = lay the armed material, sculpt tools =
+      // brush ops at the Intensity × Brush Mode strength).
+      if (this.drawers.terrainTab !== "terrain") return;
+      const tool = toolById(this.drawers.selected);
+      if (!tool) return;
+      if (tool.action === "paintMaterial") {
+        this.paintMaterialAt(g.x, g.z);
+        return;
       }
+      if (tool.id === "erase") {
+        c.sculptAt("erase", g.x, g.z, this.drawers.radius, this.drawers.sculptStrength);
+      } else {
+        for (const op of tool.ops ?? []) {
+          c.sculptAt(op, g.x, g.z, this.drawers.radius, this.drawers.sculptStrength);
+        }
+      }
+      this.drawers.setTerrainInfo(c.terrainInfo());
     }
+  }
+
+  /** The Paint tool, PHYSICAL: each pointer sample lays the armed material
+   *  into the per-cell map right under the brush — the floor changes exactly
+   *  where the player strokes. Bookkeeping commits on pointer-up. */
+  private paintMaterialAt(x: number, z: number): void {
+    const c = this.three?.controller;
+    const sel = this.substrateSel;
+    if (!c || !sel) return;
+    const t = terrainById(sel.inspectedId);
+    if (!t) return;
+    if (!terrainUnlocked(t, c.substrateInfo().habitat)) {
+      this.drawers.setNote(`${t.name} unlocks with future humid habitats.`, true);
+      return;
+    }
+    if (c.paintMaterialAt(t.id, x, z, this.drawers.radius)) this.paintedThisStroke = true;
   }
 
   // ── Decorate mode (lizard habitat editor) — entered via the mode machine ──

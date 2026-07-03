@@ -28,6 +28,7 @@ import {
 } from "../../habitats/HabitatFootprint";
 import { enclosureSpec } from "../../habitats/EnclosureSpec";
 import { buildVivariumShell, type VivariumShell } from "./ThreeVivariumShell";
+import { DEFAULT_TERRAIN_ID, terrainById } from "../../data/terrains";
 import { buildSandSurface, makeRockMesh, makeSandTexture, scatterPebbles } from "./ThreeSandTexture";
 import { loadDecorModelCached } from "./ThreeAssetLoader";
 
@@ -243,8 +244,11 @@ export function buildTerrarium(scene: THREE.Scene, layout: HabitatLayout): Vivar
   // system (bounds, placement, terrain, camera) also reads.
   const spec = enclosureSpec(layout.dimensions);
   const lamp = layout.equipment.find((e) => e.kind === "heat_lamp");
+  // The APPLIED terrain material (Terrain Mode → Materials) skins the floor and
+  // tints the bedrock/skirt, so a saved Desert Clay habitat reloads clay-coloured.
+  const applied = terrainById(layout.substrate.terrainId ?? "") ?? terrainById(DEFAULT_TERRAIN_ID);
   const shell = buildVivariumShell(scene, spec, {
-    substrateColor: layout.substrate.color,
+    substrateColor: applied?.color ?? layout.substrate.color,
     lampAnchor: lamp
       ? { x: lamp.target?.[0] ?? lamp.position[0], z: lamp.target?.[2] ?? lamp.position[2] }
       : null,
@@ -254,8 +258,8 @@ export function buildTerrarium(scene: THREE.Scene, layout: HabitatLayout): Vivar
       .map((e) => ({ x: e.position[0], y: e.position[1], z: e.position[2] })),
   });
 
-  // Warm sand floor + scattered stone chips (footprint from the same spec).
-  const sand = buildSandSurface(layout.dimensions, makeSandTexture(), 1.05, spec.sandInset);
+  // Substrate floor + scattered stone chips (footprint from the same spec).
+  const sand = buildSandSurface(layout.dimensions, makeSandTexture(256, applied?.palette), 1.05, spec.sandInset);
   scene.add(sand);
   scene.add(scatterPebbles(layout.dimensions));
 
@@ -376,6 +380,17 @@ export async function loadTerrariumDecor(scene: THREE.Scene, layout: HabitatLayo
       swapInDecor(scene, o.id, res.holder);
     });
   await Promise.all(jobs);
+}
+
+/** Re-tint the vivarium's bedrock + sand-skirt (one shared material, tagged by
+ *  the shell) to a newly applied substrate's colour — dug holes keep matching. */
+export function retintSubstrateBed(scene: THREE.Scene, color: number): void {
+  scene.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.userData?.substrateBed && m.material) {
+      (m.material as THREE.MeshStandardMaterial).color.set(color);
+    }
+  });
 }
 
 /** Swap the sand floor's texture map (e.g. for a real dropped-in PNG). */

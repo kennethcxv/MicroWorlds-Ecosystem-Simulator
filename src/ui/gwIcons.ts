@@ -37,7 +37,22 @@ export type GwIconName =
   | "calendar"
   | "target"
   | "pane"
-  | "bag";
+  | "bag"
+  | "raise"
+  | "lower"
+  | "smooth"
+  | "flatten"
+  | "lock"
+  | "reset"
+  | "brushring"
+  | "intensity"
+  | "select"
+  | "paint"
+  | "erase"
+  | "clutter"
+  | "dig"
+  | "traffic"
+  | "bolt";
 
 /** Inner SVG markup per icon (24×24 viewBox, drawn in currentColor). */
 const PATHS: Record<GwIconName, string> = {
@@ -130,6 +145,65 @@ const PATHS: Record<GwIconName, string> = {
   // Waste bag, cinched at the top (Remove Waste — the reference's amber sack).
   bag: `<path fill="currentColor" d="M9.6 5.2c.3-1 .9-1.7 2.4-1.7s2.1.7 2.4 1.7l.4 1.2c2.9 1.2 4.9 4.2 4.9 8.1 0 3.9-2.6 6-7.7 6s-7.7-2.1-7.7-6c0-3.9 2-6.9 4.9-8.1l.4-1.2Z"/>
     <path d="M9.4 6.6h5.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity="0.6"/>`,
+  // Terrain: pile the sand up — dune with a rising arrow (reference tool card).
+  raise: `<path fill="currentColor" d="M12 12.1c3.8 0 6.6 2.3 8.4 6.8a.85.85 0 0 1-.8 1.16H4.4a.85.85 0 0 1-.8-1.16c1.8-4.5 4.6-6.8 8.4-6.8Z"/>
+    <g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9.4V3.6"/><path d="M8.9 6.4 12 3.3l3.1 3.1"/></g>`,
+  // Terrain: dig a depression — dune with a sinking arrow.
+  lower: `<path fill="currentColor" d="M12 12.1c3.8 0 6.6 2.3 8.4 6.8a.85.85 0 0 1-.8 1.16H4.4a.85.85 0 0 1-.8-1.16c1.8-4.5 4.6-6.8 8.4-6.8Z" opacity="0.8"/>
+    <g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.4v5.8"/><path d="M8.9 6.2 12 9.3l3.1-3.1"/></g>`,
+  // Terrain: relax bumps — soft parallel dune ripples.
+  smooth: `<g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
+      <path d="M3.6 8.6c1.9-2.1 3.9-2.1 5.8 0s3.9 2.1 5.8 0 3.4-1.9 5.2-.5"/>
+      <path d="M3.6 13.6c1.9-2.1 3.9-2.1 5.8 0s3.9 2.1 5.8 0 3.4-1.9 5.2-.5"/>
+      <path d="M4.2 18.6h15.6" opacity="0.65"/>
+    </g>`,
+  // Terrain: back to level — ground bar pressed flat by two arrows.
+  flatten: `<path fill="currentColor" d="M4.2 16.6h15.6a1 1 0 0 1 0 2H4.2a1 1 0 0 1 0-2Z"/>
+    <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.9">
+      <path d="M8.2 4.6v7.2M5.6 9.2l2.6 2.6 2.6-2.6"/>
+      <path d="M15.8 4.6v7.2M13.2 9.2l2.6 2.6 2.6-2.6"/>
+    </g>`,
+  // Padlock (locked future substrates).
+  lock: `<rect x="5.6" y="10.4" width="12.8" height="9.6" rx="2.4" fill="currentColor"/>
+    <path fill="none" stroke="currentColor" stroke-width="2" d="M8.4 10.4V7.9a3.6 3.6 0 0 1 7.2 0v2.5"/>
+    <circle cx="12" cy="14.6" r="1.5" fill="#000" opacity="0.35"/><path d="M12 15.5v2" stroke="#000" stroke-width="1.6" stroke-linecap="round" opacity="0.35"/>`,
+  // Circular reset arrow ↺ (brush settings, reference's round bottom-right button).
+  reset: `<path fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" d="M17.8 7.2A7.3 7.3 0 1 0 19.3 12"/>
+    <path fill="currentColor" d="M19.9 3.2l-.5 5.1-4.7-2.1 5.2-3Z"/>`,
+  // Dotted brush ring (Brush Size label, reference slider icon).
+  brushring: `<circle cx="12" cy="12" r="7.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="0.5 4.6"/>
+    <circle cx="12" cy="12" r="1.7" fill="currentColor"/>`,
+  // Dot-in-ring (Intensity label, reference slider icon).
+  intensity: `<circle cx="12" cy="12" r="7.4" fill="none" stroke="currentColor" stroke-width="2"/>
+    <circle cx="12" cy="12" r="3.1" fill="currentColor"/>`,
+  // Selection marquee: dashed corners + centre dot (Select tool).
+  select: `<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <path d="M4.2 8.2V6.4a2.2 2.2 0 0 1 2.2-2.2h1.8M15.8 4.2h1.8a2.2 2.2 0 0 1 2.2 2.2v1.8M19.8 15.8v1.8a2.2 2.2 0 0 1-2.2 2.2h-1.8M8.2 19.8H6.4a2.2 2.2 0 0 1-2.2-2.2v-1.8"/>
+    </g><circle cx="12" cy="12" r="1.9" fill="currentColor"/>`,
+  // Paintbrush: angled handle + fat bristle head (Paint tool).
+  paint: `<path fill="currentColor" d="M19.8 3.5c.7.6.8 1.7.2 2.4l-7 8.1-2.7-2.3 7.1-8a1.7 1.7 0 0 1 2.4-.2Z"/>
+    <path fill="currentColor" d="M9.3 12.7l2.9 2.5c-.3 2.5-1.9 4-4.7 4.6-1.4.3-2.8.2-4.1-.2 1-.9 1.5-1.9 1.6-3 .2-2 1.6-3.5 4.3-3.9Z"/>`,
+  // Eraser block on a baseline (Erase tool).
+  erase: `<rect x="5.6" y="7.2" width="13.4" height="8" rx="1.8" fill="currentColor" transform="rotate(-42 12.3 11.2)"/>
+    <path d="M4.4 20h15.2" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.55"/>
+    <path d="m8.2 9.6 5.9 5.4" stroke="#000" stroke-width="1.6" opacity="0.3"/>`,
+  // Scattered stones of mixed size (Clutter filter).
+  clutter: `<g fill="currentColor"><circle cx="7" cy="7.4" r="2.5"/><circle cx="16.6" cy="6.3" r="1.8"/><circle cx="12.1" cy="12.6" r="3"/><circle cx="6.3" cy="17.2" r="2"/><circle cx="17.6" cy="16.8" r="2.6"/></g>`,
+  // Arrow digging into sand ripples (Dig Zones filter).
+  dig: `<g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
+      <path d="M12 3.2v6"/><path d="M9.1 6.6 12 9.5l2.9-2.9"/>
+      <path d="M3.8 14.8c1.9-2 3.8-2 5.6 0s3.8 2 5.6 0 3.3-1.8 5.2-.5"/>
+      <path d="M3.8 19.4c1.9-2 3.8-2 5.6 0s3.8 2 5.6 0 3.3-1.8 5.2-.5"/>
+    </g>`,
+  // Crossing route arrows (Traffic Flow filter).
+  traffic: `<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.8 7h4c4.4 0 6.2 10 10.4 10"/>
+      <path d="M3.8 17h4c4.4 0 6.2-10 10.4-10"/>
+      <path d="m16.4 4.6 2.9 2.4-2.9 2.4"/>
+      <path d="m16.4 14.6 2.9 2.4-2.9 2.4"/>
+    </g>`,
+  // Lightning bolt (Brush Mode chip).
+  bolt: `<path fill="currentColor" d="M13.6 2.2 5.4 13.2h4.9l-1.9 8.6 8.2-11h-4.9l1.9-8.6Z"/>`,
 };
 
 const parser = new DOMParser();

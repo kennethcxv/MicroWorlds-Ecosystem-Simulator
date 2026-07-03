@@ -207,7 +207,7 @@ See `docs/production/STATUS.md` for the live status and
 npm install          # install deps
 npm run dev          # Vite dev server (http://localhost:5173)
 npm run typecheck    # tsc --noEmit
-npm test             # vitest run — pure-sim + data + habitat/editor/care/ui-mode/creature tests (357 tests)
+npm test             # vitest run — pure-sim + data + habitat/editor/care/ui-mode/creature tests (402 tests)
 npm run test:watch   # vitest watch mode
 npm run build        # tsc --noEmit && vite build
 npm run preview      # preview the production build
@@ -278,6 +278,8 @@ src/
   main.ts app.ts styles.css vite-env.d.ts
   core/    rng.ts state.ts sim.ts save.ts   (TODO: economy.ts events.ts)
   data/    assets.ts species.ts aquaticCodex.ts swim.ts plants.ts hardscape.ts tanks.ts water.ts
+           terrains.ts (substrate materials registry — swatches/palettes/stats/unlocks)
+           terrainTools.ts (Terrain-editor tool registry) habitatFilters.ts (7 analysis filters)
            creatures/ CreatureTypes.ts creatureRegistry.ts (the 10 self-made animals — pure data)
            (TODO: equipment.ts research.ts rescueCases.ts)
   render/  assetLoader.ts canvasRenderer.ts tankScene.ts layers.ts effects.ts fishDeformation.ts
@@ -287,6 +289,7 @@ src/
            HabitatStats.ts HabitatLayout.ts HabitatBuilder.ts HabitatState.ts
            HabitatSaveLoad.ts HabitatSpecies.ts HabitatCompatibility.ts HabitatEditing.ts
            HabitatTerrain.ts HabitatFootprint.ts EnclosureSpec.ts HabitatMigrate.ts
+           HabitatMaterialMap.ts (per-cell painted substrate materials)
            lizard/ LizardHabitatData.ts GeckoMovementController.ts GeckoFeet.ts
                    LizardNeedsSystem.ts LizardFeedingSystem.ts LizardController.ts
                    LizardNutrition.ts (real feeder nutrition + supplements + intake)
@@ -310,6 +313,7 @@ src/
            layout.ts icons.ts lizardHud.ts habitatEditor.ts animalInfo.ts
            gwModes.ts (pure UI mode machine) gwTheme.ts (.gw-* design system)
            gwDrawers.ts (Clean/Feed/Terrain drawers) careModes.ts (H help sheet)
+           substrateSelection.ts (pure Terrain-Materials preview/apply state)
            (TODO: cards.ts)
   utils/   math.ts dom.ts        (TODO: color.ts)
 tests/     rng.test.ts sim.test.ts save.test.ts codex.test.ts
@@ -320,8 +324,10 @@ tests/     rng.test.ts sim.test.ts save.test.ts codex.test.ts
            uimode.test.ts dirtspots.test.ts
            nutrition.test.ts dish.test.ts insects.test.ts
            creatures.test.ts partclassifier.test.ts flock.test.ts
+           terrains.test.ts substrate.test.ts filters.test.ts terraintools.test.ts
+           materialmap.test.ts
            fixtures/creatureParts.ts (REAL measured GLB part bounds — generated)
-           (vitest — 357 tests)
+           (vitest — 402 tests)
 tools/     generate-openai-asset.mjs  edit-asset-with-fal.mjs  remove-backgrounds.mjs
            inspect-glb.mjs (GLB hierarchy/material report + --table + --fixtures)
 public/assets/  room/ tank/ hardscape/ plants/ creatures/  3d/tank_spike/ (GLBs)
@@ -398,6 +404,76 @@ Companion docs to keep current:
 
 ## Current Status — 2026-07-02
 
+- ✅ **TERRAIN EDITOR v3: TRUE MATERIAL PAINTING + 10 LENSES (v10.4)** — the
+  Paint brush is PHYSICAL: a per-cell material map
+  (`src/habitats/HabitatMaterialMap.ts`, persisted) + a composite floor
+  texture (`MaterialFloor` — per-material procedural tiles, jittered organic
+  boundaries, region-only repaints) lay the armed material exactly where the
+  player strokes (live-proven: 167-cell clay band, reload-persistent, swept
+  back). Stroke-end commits dominant substrate + bed tint + coverage-weighted
+  humidity + one event + save; dock reads "Mixed substrate" under 70%
+  dominance. Tool grid = 4×2 full-size (Flatten re-added; Wet/Dry full
+  boxes); context cards carry husbandry TIP strips + live Relief/Damp meters.
+  The editor NEVER moves the camera. Filters = 10 lenses in a 2-col grid
+  (+ Comfort = live comfort stat 89; + Enrichment = live wellbeing meter 87),
+  main column redesigned score-hero-first (number + status + tinted ring +
+  bar + recommendation, verdict + View Details beneath); minimap draws the
+  painted cells. QA: `__lizard.paintMaterial/materialCoverage`. typecheck +
+  build + **402 tests**; fish 3D + 2D + all modes intact; 0 console errors.
+- ✅ **TERRAIN EDITOR v2: COMPACT + PAINT-TO-APPLY + EXACT FILTERS (v10.3)** —
+  the editor box is ~24% of the screen (2-col tool grid Raise/Lower/Smooth/
+  Erase/Paint + Wet·Dry pair; Select cut); the right panel is TOOL-CONTEXTUAL
+  (sculpt tools → context card w/ live Relief/Damp meters; **materials only on
+  Paint**); substrates apply by PAINTING only (tile click = arm, brush stroke
+  = applySubstrate — preview API deleted). Filters (now 8, **+ Cleanliness**
+  from the live dirt map, readout = env.cleanliness exactly) sample the EXACT
+  collision/sim queries (hide floors, hard rooflines, isFree contours,
+  sculptMask, gecko BFS, real °C gradient, wet cells); readouts + minimap
+  refresh ~1 s live; the wash drapes sculpted dunes. AAA wash (blur-smoothed,
+  value-shaped alpha, glass-edge fade) + minimap v2 (2×, substrate base, exact
+  hide-wall C-contours + rock silhouettes, teal dish, live gecko marker).
+  Playwright-proven arm→paint flow + 15=15 cleanliness match; fish 3D + 2D +
+  all modes intact; 0 console errors. typecheck + build + **393 tests**.
+- ✅ **TERRAIN EDITOR: TWO TABS + FILTERS + BRUSH CURSOR (v10.2)** — the
+  Terrain editor matches its two FINAL references (`Designs/Gecko/…04_54_24/
+  04_54_42 PM.png`) with exactly **two tabs: Terrain · Filters** (Decorate/
+  category tabs removed — they live elsewhere). TERRAIN: single-column tool
+  stack Select/Paint/Raise/Lower/Smooth/Erase (+ compact Wet/Dry) from the
+  pure registry `src/data/terrainTools.ts`; **Erase = flatten+dry reset brush**
+  (live-proven), Select = inspect, Paint lays the selected material (global —
+  per-cell TODO); Intensity is a % slider and the **⚡ Brush Mode chip**
+  (Soft/Normal/Strong) scales sculpt strength + gates the bedrock limits; an
+  **in-world brush cursor** (white ring + green tool-glyph badge, terrain-
+  draped, enclosure-bounded) rides the pointer; the editor auto-raises the
+  camera (Top vantage) and re-anchors on exit. FILTERS: 7 real analysis
+  lenses (`src/data/habitatFilters.ts` + scene `AnalysisOverlay`): Heat/
+  Humidity/Hide Coverage/Clutter/Dig Zones/Traffic Flow/Lighting — soft
+  colour wash on the habitat from LIVE data (zones, wet map, decor volumes,
+  reachability flood, lamp), score cards from `filterReadout` (hidingSpots,
+  env bands, coverage/dig/reach fractions), gradient legend + top-down
+  minimap + About/TIPS panel, Overlay Opacity/Intensity + Reset Filters.
+  Playwright-verified; fish 3D + 2D + all modes intact; 0 console errors.
+  typecheck + build + **392 tests** (filters 9, terraintools 5). Screenshots:
+  `screenshots/ui_reference_match/editor_*.png`.
+- ✅ **TERRAIN UI REFERENCE-MATCH + REAL SUBSTRATES (v10.1)** — the Terrain
+  drawer now matches its reference exactly: tab pills on the drawer's top edge
+  (Terrain active · jump-to-Decorate), a floating 2-column sculpt-tool palette
+  (6 designed SVG icons, green-filled active card), an always-visible
+  MATERIALS row of **8 real photo tiles cropped from the reference art**
+  (`public/assets/ui/terrain/`), a selected-substrate info strip (description
+  + tag pills + Heat/Humidity/Digging/Clean/Bioactive mini meters +
+  Apply/Revert + "✓ Current"), slider PILLS with designed icons, ⚡ Strong and
+  a round brush-reset. Substrates are REAL: `src/data/terrains.ts` (8 entries;
+  6 desert unlocked, Bioactive/Mossy Soil locked "Future habitat") drives
+  per-terrain **procedural sand palettes** (floor re-skins live), bedrock/
+  skirt tint, the **humidity model** (base 38/41/36% per substrate,
+  live-verified) and unlocks; the pure tested `SubstrateSelection`
+  (preview→apply/revert; Esc reverts) commits `terrainId` onto
+  `layout.substrate` — **persists through reload**; Terrain dock subtitle =
+  live substrate name; event log + chime on apply. Playwright-verified end to
+  end; fish 3D + 2D + all sibling modes intact; 0 console errors. typecheck +
+  build + **378 tests** (terrains 12, substrate 9). Screenshots:
+  `screenshots/ui_reference_match/terrain_*.png`.
 - ✅ **SELF-MADE CREATURE BATCH v1 — 10 REAL ANIMALS (v10)** — the first 10
   self-made Tripo animals (feeder cricket, cherry shrimp, nerite snail, neon
   tetra, guppy, zebra danio, otocinclus, mystery snail, daphnia, isopod) are

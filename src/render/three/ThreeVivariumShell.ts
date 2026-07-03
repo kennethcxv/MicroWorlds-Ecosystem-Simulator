@@ -230,10 +230,12 @@ export function buildVivariumShell(
   g.add(backPanel);
 
   // ── Bedrock floor + inner sand skirt (dug holes always read as sand) ────────
+  // One shared material, tagged so an applied substrate can re-tint it live.
   const bedrockMat = new THREE.MeshStandardMaterial({ color: opts.substrateColor, roughness: 1, metalness: 0 });
   const bedrock = new THREE.Mesh(new THREE.PlaneGeometry(spec.interior.width, spec.interior.depth), bedrockMat);
   bedrock.rotation.x = -Math.PI / 2;
   bedrock.position.y = spec.bedrockY - 0.004;
+  bedrock.userData.substrateBed = true;
   g.add(bedrock);
   const skirtH = spec.substrateTop + 0.012 - (spec.bedrockY - 0.01);
   const skirtY = (spec.substrateTop + 0.012 + spec.bedrockY - 0.01) / 2;

@@ -21,9 +21,20 @@ import {
   disposeObject,
   loadDecorFor,
   loadTerrariumDecor,
+  retintSubstrateBed,
   swapInDecor,
   swapSandTexture,
 } from "./ThreeTerrarium";
+import { MaterialFloor, makeRockMesh } from "./ThreeSandTexture";
+import { DEFAULT_TERRAIN_ID, terrainById, terrainUnlocked, type TerrainDef } from "../../data/terrains";
+import {
+  coverageFractions,
+  dominantMaterialId,
+  ensureMaterialMap,
+  materialIdAt,
+  paintMaterial,
+  type SubstrateMaterialMap,
+} from "../../habitats/HabitatMaterialMap";
 import { decorThumbnail } from "./ThreeThumbnails";
 import { ThreeAnimalController } from "./ThreeAnimalController";
 import { ThreeFeeders } from "./ThreeFeederInsects";
@@ -40,7 +51,7 @@ import {
   type RiggedModel,
 } from "./ThreeAssetLoader";
 
-import type { HabitatState, ObstacleInteraction, PlacedObject, PlacementMode, Vec3 } from "../../habitats/HabitatTypes";
+import type { HabitatState, HabitatType, ObstacleInteraction, PlacedObject, PlacementMode, Vec3 } from "../../habitats/HabitatTypes";
 import type { GroundBounds } from "../../habitats/HabitatBounds";
 import { clampXZ, containsXZ } from "../../habitats/HabitatBounds";
 import { enclosureSpec, type EnclosureSpec } from "../../habitats/EnclosureSpec";
@@ -72,7 +83,16 @@ import {
   terrainStats,
 } from "../../habitats/HabitatTerrain";
 import { computeWellbeing } from "../../habitats/lizard/LizardWellbeing";
-import { GroundOverlay, SparkleBurst, applyTerrainToSand } from "./ThreeTerrainOverlay";
+import {
+  AnalysisOverlay,
+  GroundOverlay,
+  SparkleBurst,
+  TerrainBrushCursor,
+  applyTerrainToSand,
+  type AnalysisField,
+} from "./ThreeTerrainOverlay";
+import { filterById, filterStatus, scaleColor } from "../../data/habitatFilters";
+import type { CursorGlyph } from "../../data/terrainTools";
 import { saveHabitat, loadHabitat } from "../../habitats/HabitatSaveLoad";
 import { GECKO_MOVEMENT, GeckoMovementController, type HuntTarget } from "../../habitats/lizard/GeckoMovementController";
 import { LIZARD_NEEDS, updateNeeds } from "../../habitats/lizard/LizardNeedsSystem";
@@ -174,8 +194,12 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
   // Cleaning-mode TOOL (replaces the OS cursor): a little sponge riding the
   // sand, tilting + jittering while scrubbing, with dust puffs.
   private cleanTool!: THREE.Group;
-  private cleanTools!: { spot: THREE.Group; sweep: THREE.Group; wipe: THREE.Group };
+  private cleanTools!: { spot: THREE.Group; sweep: THREE.Group; wipe: THREE.Group; water: THREE.Group };
   private cleanScrub = false;
+  // Manual water pour: progress while the pitcher is HELD over the dish.
+  private pouring = false;
+  private pourT = 0;
+  private pourDripT = 0;
   private scrubPuffT = 0;
   // Interactive front-glass smudges (nose smears / paw prints / dust streaks).
   private glassSmudge: ThreeGlassSmudge | null = null;
@@ -204,6 +228,19 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
   private overlayDirtyT = 0;
   private waterFracCached = 0;
   private reliefCached = 0;
+  // Filters tab: the analysis wash + its state; Terrain tab: the brush cursor.
+  private analysis!: AnalysisOverlay;
+  private analysisFilterId: string | null = null;
+  private analysisIntensity = 0.8;
+  private brushCursor = new TerrainBrushCursor();
+  // Painted-substrate material map + its composite floor texture + the real
+  // 3D stones scattered over pebble/rocky cells.
+  private materials!: SubstrateMaterialMap;
+  private matFloor: MaterialFloor | null = null;
+  private matDecor: THREE.Group | null = null;
+  private strokeCells = 0;
+  private strokePaintId = "";
+  private substrateBlend = { base: 38, hold: 1 };
   private sparkle: SparkleBurst | null = null;
   private celebratedSpotless = false;
   private shelterDecideT = 4;
@@ -286,8 +323,20 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
     this.terrain = ensureTerrain(this.state.terrain);
     this.state.dirt = this.dirt;
     this.state.terrain = this.terrain;
+    // Painted substrate materials (older saves ⇒ a uniform floor of the
+    // applied terrain); ambient humidity blends by coverage.
+    this.materials = ensureMaterialMap(
+      this.state.materials,
+      this.state.layout.substrate.terrainId ?? DEFAULT_TERRAIN_ID,
+    );
+    this.state.materials = this.materials;
+    this.recomputeSubstrateBlend();
     this.overlay = new GroundOverlay(layout.dimensions, layout.dimensions.substrateTop, this.spec.sandInset);
     this.scene.add(this.overlay.mesh);
+    // Filters-tab analysis wash + Terrain Mode's in-world brush cursor.
+    this.analysis = new AnalysisOverlay(layout.dimensions, layout.dimensions.substrateTop, this.spec.sandInset);
+    this.scene.add(this.analysis.mesh);
+    this.scene.add(this.brushCursor.group);
 
     // Collision world: THE walk rectangle from the spec (identical to the decor/
     // food placement bounds — navigation matches the visible tank) + compiled
@@ -448,7 +497,16 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
     const creaturesP = preloadCreatures(["feeder_cricket", "isopod"]).catch(() => undefined);
     const [rigged, , sandTex] = await Promise.all([rigP, decorP, sandP, creaturesP]);
 
-    if (sandTex) {
+    // A PAINTED (non-uniform) floor rebuilds its composite texture + the real
+    // scattered stones on load.
+    const uniformFloor = new Set(this.materials.cells).size <= 1;
+    if (!uniformFloor) {
+      this.ensureMaterialFloor();
+      this.refreshMaterialDecor();
+    }
+    // The dropped-in PNG is a Sahara-look override — it only applies while the
+    // floor is still the untouched default sand.
+    if (sandTex && uniformFloor && this.appliedTerrain().id === DEFAULT_TERRAIN_ID) {
       swapSandTexture(this.scene, sandTex);
       console.info("[terrarium] using dropped-in sand_substrate_01.png");
     }
@@ -625,6 +683,14 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
           this.sculptAt(tool as TerrainTool, x, z, r);
           return terrainStats(this.terrain);
         },
+        // Paint-brush QA: lay a material + commit, returning live coverage.
+        paintMaterial: (id: string, x: number, z: number, r: number) => {
+          this.paintMaterialAt(id, x, z, r);
+          this.paintStrokeEnd();
+          return Object.fromEntries([...coverageFractions(this.materials)].map(([k, v]) => [k, +v.toFixed(3)]));
+        },
+        materialCoverage: () =>
+          Object.fromEntries([...coverageFractions(this.materials)].map(([k, v]) => [k, +v.toFixed(3)])),
         placement: (id: string) => this.placementMode(id),
         posY: (id: string) => findObject(this.state.layout, id)?.position[1] ?? 0,
         canPlaceAt: (defId: string, x: number, z: number) => this.validPlacement(defId, x, z),
@@ -918,6 +984,24 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
     this.droppings.sync(this.state.droppings);
     this.presentation.update(step);
     this.tickPuffs(step);
+    // Manual water pour: held over the dish, the pitcher fills it for real.
+    if (this.pouring && this.cleanScrub) {
+      this.pourT += step;
+      this.pourDripT += step;
+      const dish = this.waterDish();
+      if (dish && this.pourDripT >= 0.12) {
+        this.pourDripT = 0;
+        this.puffAt(dish.position[0], dish.position[2], 0x9fd8ff, 5, 0.03);
+      }
+      if (this.pourT >= 1.2 && dish) {
+        this.pourT = 0;
+        this.pouring = false;
+        this.waterFreshT = 0;
+        sfx.water();
+        this.puffAt(dish.position[0], dish.position[2], 0x9fd8ff, 18, 0.09);
+        logHabitatEvent(this.state, "Poured fresh water into the dish.", "good");
+      }
+    }
     this.waterFreshT += step;
     this.glassWipeT += step;
     // FRONT-GLASS SMUDGES: build slowly over time, plus nose/paw smears
@@ -1011,17 +1095,22 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
     this.state.environment.cleanliness = cleanlinessPct(this.dirt);
     if (this.state.environment.cleanliness > 20) this.celebratedSpotless = isSpotless(this.dirt) && this.celebratedSpotless;
 
-    // Ambient humidity follows the wet patches (a desert tank stays dry by default).
+    // Ambient humidity follows the wet patches, scaled by the PAINTED floor's
+    // coverage-weighted moisture retention (half clay ⇒ half clay's hold).
     const t = terrainStats(this.terrain);
     this.waterFracCached = t.waterFrac;
     this.reliefCached = t.relief;
-    this.state.environment.humidity = Math.round(Math.min(78, 38 + t.waterFrac * 95));
+    this.state.environment.humidity = Math.round(
+      Math.min(80, this.substrateBlend.base + t.waterFrac * 95 * this.substrateBlend.hold),
+    );
 
-    // Overlay redraw ~2×/s (cheap canvas), not every frame.
+    // Overlay redraw ~2×/s (cheap canvas), not every frame. The analysis wash
+    // refreshes on the same beat while a filter is up (wetness/decor drift).
     this.overlayDirtyT += step;
     if (this.overlayDirtyT >= 0.5) {
       this.overlayDirtyT = 0;
       this.overlay.redraw(this.dirt, this.terrain, { heights: this.terrainDebugOn });
+      if (this.analysis.visible) this.repaintAnalysis();
     }
 
     // DIGESTION: meals fill the store; when the timer runs out a toilet trip
@@ -1212,6 +1301,12 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
     if (isSpotless(this.dirt) && !this.celebratedSpotless) {
       this.celebratedSpotless = true;
       logHabitatEvent(this.state, "Sparkling clean — the whole terrarium is spotless! ✨", "good");
+      // Never orphan an airborne burst — replacing it without removal left
+      // frozen stars hanging in the sky until a refresh.
+      if (this.sparkle) {
+        this.scene.remove(this.sparkle.points);
+        this.sparkle.dispose();
+      }
       this.sparkle = new SparkleBurst(this.bounds);
       this.scene.add(this.sparkle.points);
     } else if (removed > 0.01) {
@@ -1681,6 +1776,27 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
     brush.visible = false;
     this.scene.add(brush);
 
+    // WATER PITCHER — enamel body, angled spout, loop handle. Held over the
+    // dish it POURS (the manual Replace-Water gesture).
+    const pitcher = new THREE.Group();
+    {
+      const enamel = new THREE.MeshStandardMaterial({ color: 0x6fa3b7, roughness: 0.45, metalness: 0.15 });
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.026, 0.052, 14), enamel);
+      body.position.set(0, 0.055, 0);
+      const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.008, 0.034, 8), enamel);
+      spout.position.set(0, 0.075, 0.026);
+      spout.rotation.x = 1.05;
+      spout.name = "spout";
+      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.0035, 8, 14, Math.PI * 1.2), enamel);
+      handle.position.set(0, 0.06, -0.024);
+      handle.rotation.y = Math.PI / 2;
+      const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.021, 0.021, 0.004, 14), steel);
+      lid.position.set(0, 0.083, 0);
+      pitcher.add(body, spout, handle, lid, reachRing(0x57b8ff));
+    }
+    pitcher.visible = false;
+    this.scene.add(pitcher);
+
     // SQUEEGEE — dark grip toward the viewer, steel T-bar, rubber blade flat
     // against the glass.
     const squeegee = new THREE.Group();
@@ -1704,7 +1820,7 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
     squeegee.visible = false;
     this.scene.add(squeegee);
 
-    this.cleanTools = { spot: scoop, sweep: brush, wipe: squeegee };
+    this.cleanTools = { spot: scoop, sweep: brush, wipe: squeegee, water: pitcher };
     this.cleanTool = scoop; // active tool (cleanHover swaps it)
   }
 
@@ -1712,7 +1828,8 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
    *  sand). `tool` picks the scoop (spot) or the hand brush (sweep);
    *  `scrubbing` = pointer held down — the tool works, jitters and puffs. */
   cleanHover(ground: { x: number; z: number } | null, scrubbing: boolean, radius: number, tool: string): void {
-    const want = tool === "sweep" ? this.cleanTools.sweep : this.cleanTools.spot;
+    const want =
+      tool === "sweep" ? this.cleanTools.sweep : tool === "water" ? this.cleanTools.water : this.cleanTools.spot;
     if (this.cleanTool !== want) {
       this.cleanTool.visible = false;
       this.cleanTool = want;
@@ -1724,7 +1841,11 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
     }
     this.cleanScrub = scrubbing;
     const y = this.world.climbHeightAt(ground.x, ground.z, 0.01);
-    this.cleanTool.position.set(ground.x, y + 0.004, ground.z);
+    // The GRIP ANCHOR: the tool's contact point locks to the pointer; all
+    // work animation renders as absolute offsets from here (never +=), so a
+    // held-still hand can never drift the tool out of position.
+    this.cleanTool.userData.anchor = new THREE.Vector3(ground.x, y + 0.004, ground.z);
+    this.cleanTool.position.copy(this.cleanTool.userData.anchor as THREE.Vector3);
     const ring = this.cleanTool.getObjectByName("reach");
     if (ring) ring.scale.setScalar(Math.max(0.06, radius));
     this.cleanTool.visible = true;
@@ -1742,7 +1863,8 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
       return;
     }
     this.cleanScrub = wiping;
-    sq.position.set(pt.x, pt.y, this.glassPane().z + 0.006);
+    sq.userData.anchor = new THREE.Vector3(pt.x, pt.y, this.glassPane().z + 0.006);
+    sq.position.copy(sq.userData.anchor as THREE.Vector3);
     sq.visible = true;
   }
 
@@ -1750,7 +1872,35 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
     this.cleanTools.spot.visible = false;
     this.cleanTools.sweep.visible = false;
     this.cleanTools.wipe.visible = false;
+    this.cleanTools.water.visible = false;
     this.cleanScrub = false;
+    this.pouring = false;
+    this.pourT = 0;
+  }
+
+  /** The pointer button state (a released hand stops the work animation even
+   *  when the pointer hasn't moved since). */
+  setCleanScrubbing(on: boolean): void {
+    this.cleanScrub = on;
+    if (!on) {
+      this.pouring = false;
+      this.pourT = 0;
+    }
+  }
+
+  /** The manual REPLACE-WATER gesture: hold the pitcher over the dish and it
+   *  pours — progress advances in the sim tick; drifting away stops it. */
+  pourAt(ground: { x: number; z: number } | null): "pouring" | "offDish" | "noDish" {
+    const dish = this.waterDish();
+    if (!dish || !ground) {
+      this.pouring = false;
+      return dish ? "offDish" : "noDish";
+    }
+    const r = Math.max(0.14, (dish.size ?? 0.2) * 0.75);
+    const over = Math.hypot(ground.x - dish.position[0], ground.z - dish.position[2]) <= r;
+    this.pouring = over;
+    if (!over) this.pourT = Math.max(0, this.pourT - 0.2);
+    return over ? "pouring" : "offDish";
   }
 
   /** A tiny particle puff (scrub dust, scoop poof, dish sparkle, glass wipe).
@@ -1895,42 +2045,51 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
       this.hoverGeckoRing.position.set(p.x, this.world.groundHeightAt(p.x, p.z) + 0.02, p.z);
       (this.hoverGeckoRing.material as THREE.MeshBasicMaterial).opacity = 0.4 + 0.18 * Math.sin(this.hoverT * 4);
     }
-    // The cleaning tools: a soft idle bob; while WORKING each animates in its
-    // own way — the scoop digs, the brush sweeps, the squeegee drags.
+    // The cleaning tools: PERFECTLY STILL in the hand until the player holds
+    // the button; while WORKING each animates in its own way as ABSOLUTE
+    // offsets from the grip anchor — the tool can never drift off the pointer.
     if (this.cleanTool.visible) {
       const t = this.cleanTool;
+      const anchor = t.userData.anchor as THREE.Vector3 | undefined;
       const isWipe = t === this.cleanTools.wipe;
       const isScoop = t === this.cleanTools.spot;
-      if (this.cleanScrub) {
-        if (isWipe) {
+      const isPitcher = t === this.cleanTools.water;
+      if (anchor) t.position.copy(anchor);
+      if (this.cleanScrub && anchor) {
+        if (isPitcher) {
+          // Pitcher: tips forward while genuinely pouring, hovers upright off
+          // the dish; a slight lift keeps the spout over the water line.
+          const tip = this.pouring ? -0.85 : -0.1;
+          t.rotation.x += (tip - t.rotation.x) * Math.min(1, step * 10);
+          t.position.y = anchor.y + 0.05;
+        } else if (isWipe) {
           // Squeegee: a firm drag — slight lean + blade squash against the pane.
           t.rotation.z = Math.sin(this.hoverT * 9) * 0.08;
           const blade = t.getObjectByName("blade");
           if (blade) blade.scale.y = 0.85 + Math.abs(Math.sin(this.hoverT * 12)) * 0.3;
         } else if (isScoop) {
-          // Scoop: dip-and-lift digging strokes.
+          // Scoop: dip-and-lift digging strokes around the anchor.
           t.rotation.x = -0.16 + Math.sin(this.hoverT * 9) * 0.14;
-          t.position.y += Math.max(0, Math.sin(this.hoverT * 9)) * 0.004;
+          t.position.y = anchor.y + Math.max(0, Math.sin(this.hoverT * 9)) * 0.004;
           this.scrubPuffT += step;
           if (this.scrubPuffT > 0.2) {
             this.scrubPuffT = 0;
-            this.puffAt(t.position.x, t.position.z, 0xd9c08a, 8, 0.06);
+            this.puffAt(anchor.x, anchor.z, 0xd9c08a, 8, 0.06);
           }
         } else {
-          // Brush: quick sweeping tilts + jitter, shedding dust.
+          // Brush: quick sweeping tilts + side strokes around the anchor.
           t.rotation.z = Math.sin(this.hoverT * 26) * 0.16;
           t.rotation.x = 0.1 + Math.sin(this.hoverT * 21) * 0.08;
-          t.position.x += Math.sin(this.hoverT * 30) * 0.0035;
+          t.position.x = anchor.x + Math.sin(this.hoverT * 30) * 0.0035;
           this.scrubPuffT += step;
           if (this.scrubPuffT > 0.16) {
             this.scrubPuffT = 0;
-            this.puffAt(t.position.x, t.position.z, 0xd9c08a, 8, 0.06);
+            this.puffAt(anchor.x, anchor.z, 0xd9c08a, 8, 0.06);
           }
         }
       } else {
-        t.rotation.z = Math.sin(this.hoverT * 2.4) * 0.05;
-        t.rotation.x = 0;
-        if (!isWipe) t.position.y += Math.sin(this.hoverT * 3.1) * 0.0012;
+        // At rest: dead still, squared up, exactly at the pointer.
+        t.rotation.set(0, 0, 0);
         const blade = isWipe ? t.getObjectByName("blade") : null;
         if (blade) blade.scale.y = 1;
       }
@@ -2015,22 +2174,31 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
 
   /** Apply one Terrain-Mode brush stroke. The collision world samples the SAME
    *  height field live, so walk height / feet / navigation / feeding react
-   *  instantly — the visuals + stats just follow. */
-  sculptAt(tool: TerrainTool, x: number, z: number, radius: number): void {
+   *  instantly — the visuals + stats just follow. `strength` (Intensity % ×
+   *  Brush Mode) scales raise/lower depth and gives the area brushes a second
+   *  pass when pushed hard. */
+  sculptAt(tool: TerrainTool, x: number, z: number, radius: number, strength = 1): void {
     const dims = this.state.layout.dimensions;
     const opts = { limits: sculptLimits(dims, this.strongBrushOn), mask: this.sculptMask };
+    const s = Math.max(0.1, Math.min(1.6, strength));
+    // The PAINTED material resists the shovel: loose dune sand digs easily,
+    // clay and gravel fight back (their diggingComfort scales the bite).
+    const mat = terrainById(materialIdAt(this.materials, dims, x, z));
+    const digFactor = mat ? 0.35 + 0.65 * mat.stats.digging : 1;
+    const amount = 0.05 * s * digFactor;
+    const passes = s * digFactor >= 1.15 ? 2 : 1;
     switch (tool) {
       case "raise":
-        sculpt(this.terrain, dims, x, z, radius, +0.05, opts);
+        sculpt(this.terrain, dims, x, z, radius, +amount, opts);
         break;
       case "lower":
-        sculpt(this.terrain, dims, x, z, radius, -0.05, opts);
+        sculpt(this.terrain, dims, x, z, radius, -amount, opts);
         break;
       case "smooth":
-        smoothTerrain(this.terrain, dims, x, z, radius, opts);
+        for (let i = 0; i < passes; i++) smoothTerrain(this.terrain, dims, x, z, radius, opts);
         break;
       case "flatten":
-        flattenTerrain(this.terrain, dims, x, z, radius, opts);
+        for (let i = 0; i < passes; i++) flattenTerrain(this.terrain, dims, x, z, radius, opts);
         break;
       case "water":
         paintWater(this.terrain, dims, x, z, radius, true, opts);
@@ -2038,22 +2206,733 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
       case "dry":
         paintWater(this.terrain, dims, x, z, radius, false, opts);
         break;
+      case "erase":
+        // The reset brush: heights back to level AND damp patches dried.
+        for (let i = 0; i < passes; i++) flattenTerrain(this.terrain, dims, x, z, radius, opts);
+        paintWater(this.terrain, dims, x, z, radius, false, opts);
+        break;
     }
     this.applyTerrainVisuals();
     this.overlay.redraw(this.dirt, this.terrain, { heights: this.terrainDebugOn });
+    if (this.analysis.visible) this.repaintAnalysis();
   }
 
-  /** Re-displace the sand mesh + decal overlay from the sculpted height map, and
-   *  re-seat the scattered pebbles so they ride the dunes instead of sinking. */
+  // ── Terrain Mode brush cursor (soft ring + green tool badge) ────────────
+
+  /** Ride the in-world brush cursor under the pointer. `ground` null or a
+   *  point outside the enclosure hides it (the ground ray extends past the
+   *  glass; the brush only ever works inside). Returns whether it is shown. */
+  terrainHover(ground: { x: number; z: number } | null, radius: number, glyph: CursorGlyph, active: boolean): boolean {
+    if (!ground || !containsXZ(this.bounds, ground.x, ground.z, -0.05)) {
+      this.brushCursor.hide();
+      return false;
+    }
+    this.brushCursor.setGlyph(glyph);
+    const y = this.world.climbHeightAt(ground.x, ground.z, 0.01);
+    this.brushCursor.show(ground.x, y, ground.z, radius, active);
+    return true;
+  }
+
+  clearTerrainHover(): void {
+    this.brushCursor.hide();
+  }
+
+  // ── FILTERS tab: analysis overlays + live readouts ──────────────────────
+
+  /** Show an analysis wash over the habitat (null clears it). */
+  setAnalysisFilter(id: string | null): void {
+    this.analysisFilterId = id;
+    this.analysis.setVisible(id !== null);
+    if (id) this.repaintAnalysis();
+  }
+
+  setAnalysisOpacity(frac: number): void {
+    this.analysis.setOpacity(frac);
+  }
+
+  setAnalysisIntensity(frac: number): void {
+    this.analysisIntensity = Math.max(0.1, Math.min(1, frac));
+    if (this.analysisFilterId) this.repaintAnalysis();
+  }
+
+  private repaintAnalysis(): void {
+    const def = this.analysisFilterId ? filterById(this.analysisFilterId) : null;
+    if (!def) return;
+    this.analysis.applyTerrain(this.terrain);
+    this.analysis.paint(this.analysisFieldFor(def.id), def.scale, this.analysisIntensity);
+  }
+
+  /** Reach fraction cached by the last traffic-flow field build. */
+  private trafficReachFrac = 1;
+
+  /** Per-cell 0..1 field for a filter (0 = legend low, 1 = legend high) — all
+   *  read from the LIVE systems through the EXACT collision queries the animal
+   *  itself uses (marching-squares contours, hide floors, hard rooflines, the
+   *  sculpted terrain and dirt maps), so the wash is the vivarium's truth. */
+  private analysisFieldFor(id: string): AnalysisField {
+    const dims = this.state.layout.dimensions;
+    const world = this.world;
+    const b = this.bounds;
+    const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+    const obstacles = world.obstacles
+      .map((ob) => ({ bc: ob.bc ?? world.boundingCircle(ob), interaction: ob.interaction, passable: ob.passable }))
+      .filter((o) => o.bc.r > 0.02);
+
+    switch (id) {
+      case "heat": {
+        // The sim's own temperature model: baskingC inside the basking zone
+        // easing to coolC on the far side — the wash IS the thermal gradient.
+        const bask = this.state.layout.zones.find((z) => z.kind === "basking");
+        const cx = bask?.center[0] ?? b.maxX * 0.5;
+        const cz = bask?.center[2] ?? 0;
+        const r = Math.max(0.25, bask?.radius ?? 0.35);
+        const warm = this.state.environment.baskingC;
+        const cool = this.state.environment.coolC;
+        const mm = this.materials;
+        return (x, z) => {
+          const falloff = clamp01(1 - Math.hypot(x - cx, z - cz) / (r * 2.6));
+          let tempC = cool + (warm - cool) * Math.pow(falloff, 0.85);
+          // The painted material's heat retention nudges the local reading
+          // (clay under the lamp genuinely holds warmth longer).
+          const mat = terrainById(materialIdAt(mm, dims, x, z));
+          if (mat) tempC += (mat.stats.heat - 0.7) * 2.5;
+          return clamp01((tempC - 22) / 14); // 22°C → cold end, 36°C → hot end
+        };
+      }
+      case "humidity": {
+        // Exact wet cells from the sculpted terrain's water mask + ambient.
+        const t = this.terrain;
+        const ambient = clamp01((this.state.environment.humidity - 20) / 100) * 0.45;
+        return (x, z) => {
+          let wet = 0;
+          for (let dz = -1; dz <= 1; dz++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const ix = Math.round(((x + dx * 0.09 + dims.width / 2) / dims.width) * (t.nx - 1));
+              const iz = Math.round(((z + dz * 0.09 + dims.depth / 2) / dims.depth) * (t.nz - 1));
+              if (ix < 0 || iz < 0 || ix >= t.nx || iz >= t.nz) continue;
+              if (t.water[iz * t.nx + ix]) wet = Math.max(wet, dx === 0 && dz === 0 ? 1 : 0.62);
+            }
+          }
+          return clamp01(ambient + wet * 0.9);
+        };
+      }
+      case "hide_coverage":
+        return (x, z) => {
+          // EXACT: inside a hide pocket (the interior floor the gecko rests
+          // on) or under a hard roofline = fully covered.
+          const s = world.sampleSurfaceAt(x, z);
+          if (s.type === "hide") return 1;
+          if (world.hardTopAt(x, z) > s.y + 0.04) return 0.95;
+          // Aura: security falls off with distance from cover.
+          let cover = 0;
+          for (const o of obstacles) {
+            const strength = o.interaction === "hide" ? 0.92 : o.passable ? 0.5 : 0.62;
+            const d = Math.hypot(x - o.bc.cx, z - o.bc.cz);
+            const reach = o.bc.r + 0.1;
+            cover = Math.max(cover, d < reach ? strength : strength * clamp01(1 - (d - reach) / 0.26));
+          }
+          // Walls read as partial security (leos hug edges).
+          const edge = Math.min(x - b.minX, b.maxX - x, z - b.minZ, b.maxZ - z);
+          cover = Math.max(cover, 0.34 * clamp01(1 - edge / 0.16));
+          return clamp01(cover);
+        };
+      case "cleanliness": {
+        // The LIVE dirt map — every fouled patch exactly where the sim says.
+        const dirt = this.dirt;
+        return (x, z) => {
+          const ix = Math.max(0, Math.min(dirt.nx - 1, Math.floor(((x + dims.width / 2) / dims.width) * dirt.nx)));
+          const iz = Math.max(0, Math.min(dirt.nz - 1, Math.floor(((z + dims.depth / 2) / dims.depth) * dirt.nz)));
+          return clamp01(1 - dirt.cells[iz * dirt.nx + ix] * 1.15);
+        };
+      }
+      case "comfort": {
+        // JWE-style composite: the right warmth × nearby cover × clean ground.
+        const bask = this.state.layout.zones.find((zz) => zz.kind === "basking");
+        const cx = bask?.center[0] ?? b.maxX * 0.5;
+        const cz = bask?.center[2] ?? 0;
+        const r = Math.max(0.25, bask?.radius ?? 0.35);
+        const warm = this.state.environment.baskingC;
+        const cool = this.state.environment.coolC;
+        const coverField = this.analysisFieldFor("hide_coverage");
+        const cleanField = this.analysisFieldFor("cleanliness");
+        return (x, z) => {
+          const falloff = clamp01(1 - Math.hypot(x - cx, z - cz) / (r * 2.6));
+          const tempC = cool + (warm - cool) * Math.pow(falloff, 0.85);
+          const heatComfort = clamp01(1 - Math.abs(tempC - 29) / 8);
+          return clamp01(0.42 * heatComfort + 0.36 * coverField(x, z) + 0.22 * cleanField(x, z));
+        };
+      }
+      case "enrichment": {
+        // Planet-Zoo-style: things to DO per corner — climbables score highest,
+        // hides next, plus open diggable sand as baseline enrichment.
+        const mask = this.sculptMask;
+        return (x, z) => {
+          let enrich = 0;
+          for (const o of obstacles) {
+            const strength = o.passable ? 0.95 : o.interaction === "hide" ? 0.85 : 0.55;
+            const d = Math.hypot(x - o.bc.cx, z - o.bc.cz);
+            const reach = o.bc.r + 0.18;
+            enrich = Math.max(enrich, d < reach ? strength : strength * clamp01(1 - (d - reach) / 0.3));
+          }
+          if (mask(x, z) && world.isFree(x, z, 0.03)) enrich = Math.max(enrich, 0.45);
+          return clamp01(enrich);
+        };
+      }
+      case "clutter":
+        return (x, z) => {
+          // EXACT blocked ground reads fully cluttered; open floor shows the
+          // crowding aura of nearby decor.
+          if (!world.isFree(x, z, 0.03)) return 1;
+          let density = 0;
+          for (const o of obstacles) {
+            const d = Math.hypot(x - o.bc.cx, z - o.bc.cz);
+            density += clamp01(1 - d / (o.bc.r + 0.2)) * 0.6;
+          }
+          return clamp01(density);
+        };
+      case "dig_zones": {
+        // The BRUSH's own rule (sculptMask) + real slopes + real free ground.
+        const mask = this.sculptMask;
+        return (x, z) => {
+          if (!containsXZ(b, x, z, 0.02)) return 0;
+          if (!mask(x, z)) return 0.06;
+          if (!world.isFree(x, z, 0.03)) return 0.1;
+          if (terrainSlopeAt(this.terrain, dims, x, z) > 0.6) return 0.25;
+          let clearance = 1;
+          for (const o of obstacles) {
+            const d = Math.hypot(x - o.bc.cx, z - o.bc.cz) - o.bc.r;
+            clearance = Math.min(clearance, clamp01(d / 0.22));
+          }
+          return clamp01(0.45 + 0.55 * clearance);
+        };
+      }
+      case "traffic_flow": {
+        // Reachability flood from the gecko over the exact walkable field.
+        const nx = 72;
+        const nz = 46;
+        const w = b.maxX - b.minX;
+        const d = b.maxZ - b.minZ;
+        const free = new Uint8Array(nx * nz);
+        const reach = new Uint8Array(nx * nz);
+        const cellAt = (x: number, z: number): number => {
+          const ix = Math.max(0, Math.min(nx - 1, Math.floor(((x - b.minX) / w) * nx)));
+          const iz = Math.max(0, Math.min(nz - 1, Math.floor(((z - b.minZ) / d) * nz)));
+          return iz * nx + ix;
+        };
+        for (let iz = 0; iz < nz; iz++) {
+          for (let ix = 0; ix < nx; ix++) {
+            const x = b.minX + ((ix + 0.5) / nx) * w;
+            const z = b.minZ + ((iz + 0.5) / nz) * d;
+            free[iz * nx + ix] = world.isFree(x, z, 0.07) ? 1 : 0;
+          }
+        }
+        const queue: number[] = [];
+        const start = cellAt(this.brain.position.x, this.brain.position.z);
+        if (free[start]) {
+          reach[start] = 1;
+          queue.push(start);
+        } else {
+          // Gecko inside a hide: flood from the first free cell instead.
+          for (let i = 0; i < free.length; i++) {
+            if (free[i]) {
+              reach[i] = 1;
+              queue.push(i);
+              break;
+            }
+          }
+        }
+        while (queue.length) {
+          const cell = queue.pop()!;
+          const cx = cell % nx;
+          const cz = Math.floor(cell / nx);
+          for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+            const jx = cx + dx;
+            const jz = cz + dz;
+            if (jx < 0 || jz < 0 || jx >= nx || jz >= nz) continue;
+            const j = jz * nx + jx;
+            if (free[j] && !reach[j]) {
+              reach[j] = 1;
+              queue.push(j);
+            }
+          }
+        }
+        let f = 0;
+        let r = 0;
+        for (let i = 0; i < free.length; i++) {
+          if (free[i]) f++;
+          if (reach[i]) r++;
+        }
+        this.trafficReachFrac = f > 0 ? r / f : 1;
+        return (x, z) => {
+          const cell = cellAt(x, z);
+          if (!free[cell]) return 0.32; // decor itself: neutral-low
+          if (!reach[cell]) return 0.05; // walled-off pocket
+          let clearance = 1;
+          for (const o of obstacles) {
+            const dd = Math.hypot(x - o.bc.cx, z - o.bc.cz) - o.bc.r;
+            clearance = Math.min(clearance, clamp01(dd / 0.24));
+          }
+          return clamp01(0.5 + 0.5 * clearance);
+        };
+      }
+      case "lighting":
+      default: {
+        const lamp = this.state.layout.equipment.find((e) => e.kind === "heat_lamp");
+        const lx = lamp?.target?.[0] ?? lamp?.position[0] ?? b.maxX * 0.5;
+        const lz = lamp?.target?.[2] ?? lamp?.position[2] ?? 0;
+        const lampOn = !!lamp && lamp.power > 0;
+        const uvb = this.state.layout.equipment.some((e) => e.kind === "uvb_lamp" && e.power > 0);
+        const ambient = uvb ? 0.3 : 0.16;
+        return (x, z) => {
+          let lit = lampOn ? clamp01(1 - Math.hypot(x - lx, z - lz) / 1.15) : 0;
+          // EXACT shade: anything with a hard roofline over this point blocks
+          // the lamp (cave roofs, rock overhangs) — true cast shadow zones.
+          const s = world.sampleSurfaceAt(x, z);
+          if (world.hardTopAt(x, z) > s.y + 0.04) lit *= 0.18;
+          return clamp01(ambient + lit * 0.85);
+        };
+      }
+    }
+  }
+
+  /** Live score + status + one-line verdict for a filter (real systems only). */
+  filterReadout(id: string): { id: string; score: number; word: string; tone: "good" | "warn" | "bad"; detail: string } {
+    const env = this.state.environment;
+    const clamp = (v: number): number => Math.max(0, Math.min(100, Math.round(v)));
+    let score = 50;
+    let detail = "";
+    switch (id) {
+      case "heat": {
+        const off = Math.abs(env.baskingC - 31);
+        score = clamp(100 - off * 9);
+        detail =
+          off <= 3
+            ? "The basking zone sits in the ideal range with a cool retreat opposite."
+            : env.baskingC > 31
+              ? "The basking side runs hot — your gecko may start avoiding it."
+              : "The basking side runs cool — warmth drives digestion.";
+        break;
+      }
+      case "humidity": {
+        const off = env.humidity < 30 ? 30 - env.humidity : env.humidity > 45 ? env.humidity - 45 : 0;
+        score = clamp(96 - off * 3.2);
+        detail =
+          off === 0
+            ? "Ambient humidity sits in the desert comfort band."
+            : env.humidity > 45
+              ? "The air is humid for a desert species — dry a few damp patches."
+              : "Very dry air — paint a small damp patch near a hide for shedding.";
+        break;
+      }
+      case "hide_coverage": {
+        score = clamp(this.scoresCached.hidingSpots);
+        detail =
+          score >= 70
+            ? "Your gecko has access to good hiding areas throughout the habitat."
+            : score >= 50
+              ? "Some open stretches leave your gecko exposed — add another hide."
+              : "Too few hiding spots — your gecko has nowhere secure to retreat.";
+        break;
+      }
+      case "cleanliness": {
+        score = clamp(this.state.environment.cleanliness);
+        const drops = (this.state.droppings ?? []).length;
+        detail =
+          drops > 0
+            ? `${drops} dropping${drops > 1 ? "s" : ""} waiting — scoop ${drops > 1 ? "them" : "it"} before the patch fouls.`
+            : score >= 80
+              ? "The substrate is fresh — just the usual light traffic marks."
+              : "Grime is building up — spot-clean the brown patches soon.";
+        break;
+      }
+      case "comfort": {
+        // The gecko's LIVE comfort stat — the same number the stat strip shows.
+        score = clamp(this.animalInfo().comfort);
+        detail =
+          score >= 75
+            ? "Your gecko is at ease almost everywhere it wanders."
+            : score >= 50
+              ? "Comfort is patchy — warmth, cover or clean ground is missing somewhere."
+              : "Your gecko struggles to settle — check heat, hides and grime.";
+        break;
+      }
+      case "enrichment": {
+        // The LIVE wellbeing meter from the animal-info panel.
+        score = clamp(this.animalInfo().wellbeing.enrichment);
+        detail =
+          score >= 60
+            ? "Plenty to climb, dig and explore — a busy little world."
+            : "The habitat is a bit bare — add climbable decor or clear digging space.";
+        break;
+      }
+      case "clutter": {
+        // Fraction of the floor covered by decor footprints; 20–45% reads natural.
+        const area = (this.bounds.maxX - this.bounds.minX) * (this.bounds.maxZ - this.bounds.minZ);
+        let covered = 0;
+        for (const ob of this.world.obstacles) {
+          const bc = ob.bc ?? this.world.boundingCircle(ob);
+          covered += Math.PI * bc.r * bc.r * 0.7;
+        }
+        const frac = Math.min(1, covered / Math.max(0.001, area));
+        const off = frac < 0.2 ? 0.2 - frac : frac > 0.45 ? frac - 0.45 : 0;
+        score = clamp(95 - off * 240);
+        detail =
+          off === 0
+            ? "A natural balance of sheltered corners and clear walking space."
+            : frac > 0.45
+              ? "The floor is getting crowded — clear a lane through the middle."
+              : "The habitat is sparse — a little more decor adds security.";
+        break;
+      }
+      case "dig_zones": {
+        let dig = 0;
+        const N = 22;
+        for (let iz = 0; iz < N; iz++) {
+          for (let ix = 0; ix < N; ix++) {
+            const x = this.bounds.minX + ((ix + 0.5) / N) * (this.bounds.maxX - this.bounds.minX);
+            const z = this.bounds.minZ + ((iz + 0.5) / N) * (this.bounds.maxZ - this.bounds.minZ);
+            if (this.sculptMask(x, z) && terrainSlopeAt(this.terrain, this.state.layout.dimensions, x, z) < 0.6) dig++;
+          }
+        }
+        const frac = dig / (N * N);
+        score = clamp((frac / 0.45) * 100);
+        detail =
+          frac >= 0.3
+            ? "Plenty of open sand — digging enrichment is easy to come by."
+            : "Open sand is scarce — leave a few clear patches between decor.";
+        break;
+      }
+      case "traffic_flow": {
+        this.analysisFieldFor("traffic_flow"); // refresh the reach fraction
+        score = clamp(this.trafficReachFrac * 100);
+        detail =
+          score >= 85
+            ? "Every corner of the habitat connects back to the open floor."
+            : "Some areas are pinched off — widen the gaps between large decor.";
+        break;
+      }
+      case "lighting": {
+        const lampOn = this.state.layout.equipment.some((e) => e.kind === "heat_lamp" && e.power > 0);
+        const uvbOn = this.state.layout.equipment.some((e) => e.kind === "uvb_lamp" && e.power > 0);
+        score = lampOn && uvbOn ? 92 : lampOn ? 74 : uvbOn ? 55 : 30;
+        detail =
+          lampOn && uvbOn
+            ? "Basking light and UVB are both on, with shaded retreats intact."
+            : lampOn
+              ? "The basking lamp is on — UVB would round out the light diet."
+              : "No basking lamp — your gecko has nowhere bright to warm up.";
+        break;
+      }
+    }
+    const st = filterStatus(score);
+    return { id, score, word: st.word, tone: st.tone, detail };
+  }
+
+  /** Top-down analysis minimap: substrate-coloured floor plan of THIS habitat
+   *  — the filter wash blur-smoothed over it, every decor piece as its EXACT
+   *  collision contour, the water dish tinted, and the gecko marked live.
+   *  Rendered at 2× for crisp display in the drawer's minimap frame. */
+  filterMapCanvas(): HTMLCanvasElement | null {
+    const def = this.analysisFilterId ? filterById(this.analysisFilterId) : null;
+    if (!def) return null;
+    const W = 472;
+    const H = 296;
+    const c = document.createElement("canvas");
+    c.width = W;
+    c.height = H;
+    const ctx = c.getContext("2d")!;
+    const dims = this.state.layout.dimensions;
+    const field = this.analysisFieldFor(def.id);
+    const px = (x: number): number => (x / dims.width + 0.5) * W;
+    const py = (z: number): number => (z / dims.depth + 0.5) * H;
+
+    // Floor plan base: every PAINTED material cell in its own tone (the map
+    // shows exactly what the player brushed), plus a whisper of grain.
+    const mm = this.materials;
+    const cw2 = W / mm.nx;
+    const ch2 = H / mm.nz;
+    for (let iz = 0; iz < mm.nz; iz++) {
+      for (let ix = 0; ix < mm.nx; ix++) {
+        const id = mm.ids[mm.cells[iz * mm.nx + ix]] ?? mm.ids[0];
+        const pal = (terrainById(id) ?? this.appliedTerrain()).palette;
+        ctx.fillStyle = pal.patchDark;
+        ctx.fillRect(ix * cw2, iz * ch2, cw2 + 0.5, ch2 + 0.5);
+      }
+    }
+    const base = this.appliedTerrain().palette;
+    ctx.globalAlpha = 0.22;
+    for (let i = 0; i < 340; i++) {
+      const gx = ((i * 127.3) % 1009) / 1009;
+      const gz = ((i * 311.7) % 997) / 997;
+      ctx.fillStyle = i % 2 ? base.grainLight : base.grainDark;
+      ctx.fillRect(gx * W, gz * H, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+
+    // Field wash: low-res cells blur-scaled over the floor.
+    const off = document.createElement("canvas");
+    off.width = 118;
+    off.height = 74;
+    const octx = off.getContext("2d")!;
+    const img = octx.createImageData(off.width, off.height);
+    for (let iz = 0; iz < off.height; iz++) {
+      for (let ix = 0; ix < off.width; ix++) {
+        const x = ((ix + 0.5) / off.width - 0.5) * dims.width;
+        const z = ((iz + 0.5) / off.height - 0.5) * dims.depth;
+        const t = Math.max(0, Math.min(1, field(x, z)));
+        const col = parseInt(scaleColor(def.scale, t).slice(1), 16);
+        const i4 = (iz * off.width + ix) * 4;
+        img.data[i4] = (col >> 16) & 255;
+        img.data[i4 + 1] = (col >> 8) & 255;
+        img.data[i4 + 2] = col & 255;
+        img.data[i4 + 3] = 216;
+      }
+    }
+    octx.putImageData(img, 0, 0);
+    ctx.save();
+    ctx.filter = "blur(2px)";
+    ctx.drawImage(off, -4, -4, W + 8, H + 8);
+    ctx.restore();
+
+    // Decor as its EXACT collision silhouettes (marching-squares contours).
+    for (const ob of this.world.obstacles) {
+      const isHide = ob.interaction === "hide";
+      const isDish = ob.category === "dish";
+      ctx.beginPath();
+      if (ob.shape === "poly" || ob.shape === "hull") {
+        const pts = (ob as { pts: { x: number; z: number }[] }).pts;
+        if (pts.length < 3) continue;
+        ctx.moveTo(px(pts[0].x), py(pts[0].z));
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(px(pts[i].x), py(pts[i].z));
+        ctx.closePath();
+      } else {
+        const bc = ob.bc ?? this.world.boundingCircle(ob);
+        ctx.ellipse(px(bc.cx), py(bc.cz), (bc.r / dims.width) * W, (bc.r / dims.depth) * H, 0, 0, Math.PI * 2);
+      }
+      ctx.fillStyle = isDish ? "rgba(38, 60, 66, 0.78)" : isHide ? "rgba(26, 19, 11, 0.8)" : "rgba(20, 15, 9, 0.66)";
+      ctx.fill();
+      ctx.strokeStyle = isDish ? "rgba(140, 210, 220, 0.5)" : "rgba(255, 240, 205, 0.32)";
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      if (isDish) {
+        const bc = ob.bc ?? this.world.boundingCircle(ob);
+        ctx.fillStyle = "rgba(105, 180, 205, 0.5)";
+        ctx.beginPath();
+        ctx.ellipse(px(bc.cx), py(bc.cz), (bc.r * 0.55 / dims.width) * W, (bc.r * 0.55 / dims.depth) * H, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // The gecko, live: soft shadow + green dot + white rim.
+    const gp = this.brain.position;
+    const gx = px(gp.x);
+    const gy = py(gp.z);
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath();
+    ctx.ellipse(gx + 1.5, gy + 2, 7.5, 5.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#8ce25a";
+    ctx.beginPath();
+    ctx.arc(gx, gy, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Glass frame + corner vignette.
+    ctx.strokeStyle = "rgba(214, 230, 226, 0.35)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(1.5, 1.5, W - 3, H - 3);
+    const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.55, W / 2, H / 2, H * 1.05);
+    vg.addColorStop(0, "rgba(0,0,0,0)");
+    vg.addColorStop(1, "rgba(0,0,0,0.38)");
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+    return c;
+  }
+
+  // ── Substrate materials (Terrain Mode → Materials row) ──────────────────
+
+  /** The terrain material committed to the layout (older saves ⇒ Sahara Sand). */
+  private appliedTerrain(): TerrainDef {
+    return (
+      terrainById(this.state.layout.substrate.terrainId ?? "") ??
+      terrainById(DEFAULT_TERRAIN_ID)!
+    );
+  }
+
+  private substrateInfo(): { id: string; name: string; habitat: HabitatType } {
+    const dom = dominantMaterialId(this.materials);
+    const t = terrainById(dom) ?? this.appliedTerrain();
+    const dominance = coverageFractions(this.materials).get(dom) ?? 1;
+    return { id: t.id, name: dominance < 0.7 ? "Mixed substrate" : t.name, habitat: this.state.layout.type };
+  }
+
+  /** Coverage-weighted humidity params — a half-clay floor holds half-clay
+   *  moisture. Recomputed on load + after every paint stroke. */
+  private recomputeSubstrateBlend(): void {
+    const cov = coverageFractions(this.materials);
+    let base = 0;
+    let hold = 0;
+    for (const [id, f] of cov) {
+      const t = terrainById(id) ?? terrainById(DEFAULT_TERRAIN_ID)!;
+      base += t.humidityBase * f;
+      hold += t.humidityHold * f;
+    }
+    this.substrateBlend = { base: base || 38, hold: hold || 1 };
+  }
+
+  /** Lazily swap the tiled sand texture for the painted-material composite
+   *  (only needed once the floor stops being uniform). */
+  private ensureMaterialFloor(): MaterialFloor {
+    if (!this.matFloor) {
+      this.matFloor = new MaterialFloor(
+        this.state.layout.dimensions,
+        (id) => (terrainById(id) ?? terrainById(DEFAULT_TERRAIN_ID)!).palette,
+        this.spec.sandInset,
+      );
+      this.matFloor.paint(this.materials);
+      const sand = this.scene.children.find((c) => c.userData?.sand) as THREE.Mesh | undefined;
+      if (sand) {
+        const mat = sand.material as THREE.MeshStandardMaterial;
+        mat.map?.dispose();
+        mat.map = this.matFloor.texture; // full-floor composite: repeat stays 1×1
+        mat.needsUpdate = true;
+      }
+    }
+    return this.matFloor;
+  }
+
+  /** The Paint brush, PHYSICAL: lay `id` into the material map under the
+   *  stroke sample and repaint just that region of the floor texture. */
+  private paintMaterialAt(id: string, x: number, z: number, radius: number): boolean {
+    const t = terrainById(id);
+    if (!t || !terrainUnlocked(t, this.state.layout.type)) return false;
+    const changed = paintMaterial(this.materials, this.state.layout.dimensions, x, z, radius, id);
+    if (changed > 0) {
+      this.ensureMaterialFloor().paint(this.materials, { x, z, radius });
+      this.strokeCells += changed;
+      this.strokePaintId = id;
+    }
+    return changed > 0;
+  }
+
+  /** A paint stroke finished: dominant substrate + bed tint + humidity blend
+   *  update, the real 3D stones rescatter, the event logs once per stroke,
+   *  and the save persists the map. */
+  private paintStrokeEnd(): void {
+    if (this.strokeCells === 0) return;
+    const dom = dominantMaterialId(this.materials);
+    const t = terrainById(dom) ?? this.appliedTerrain();
+    const sub = this.state.layout.substrate;
+    this.state.layout.substrate = { type: t.substrateType, color: t.color, depth: sub.depth, terrainId: t.id };
+    retintSubstrateBed(this.scene, t.color);
+    this.recomputeSubstrateBlend();
+    this.refreshMaterialDecor();
+    const painted = terrainById(this.strokePaintId);
+    logHabitatEvent(this.state, `Painted ${painted?.name ?? "substrate"} into the habitat floor.`, "good");
+    saveHabitat(this.state);
+    this.strokeCells = 0;
+    if (this.analysis.visible) this.repaintAnalysis();
+  }
+
+  /** Real 3D stones over pebble/rocky cells — painting gravel doesn't just
+   *  tint the floor, it LAYS PEBBLES. Deterministic per cell (stable across
+   *  strokes/reloads), capped for perf, riding the sculpted terrain. */
+  private refreshMaterialDecor(): void {
+    if (this.matDecor) {
+      this.scene.remove(this.matDecor);
+      this.matDecor.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) {
+          m.geometry.dispose();
+          (m.material as THREE.Material).dispose();
+        }
+      });
+      this.matDecor = null;
+    }
+    const dims = this.state.layout.dimensions;
+    const mm = this.materials;
+    const group = new THREE.Group();
+    group.userData.materialDecor = true;
+    const hash = (a: number, b: number): number => {
+      const s = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
+      return s - Math.floor(s);
+    };
+    let placed = 0;
+    for (let iz = 0; iz < mm.nz && placed < 150; iz++) {
+      for (let ix = 0; ix < mm.nx && placed < 150; ix++) {
+        const id = mm.ids[mm.cells[iz * mm.nx + ix]];
+        if (id !== "pebble_gravel" && id !== "rocky_mix") continue;
+        const h = hash(ix, iz);
+        // Gravel scatters denser than rocky (bigger, sparser shards).
+        if (h > (id === "pebble_gravel" ? 0.34 : 0.2)) continue;
+        const cellW = dims.width / mm.nx;
+        const cellD = dims.depth / mm.nz;
+        const x = (ix + 0.5) * cellW - dims.width / 2 + (hash(ix, iz + 99) - 0.5) * cellW * 0.9;
+        const z = (iz + 0.5) * cellD - dims.depth / 2 + (hash(ix + 99, iz) - 0.5) * cellD * 0.9;
+        const pal = terrainById(id)!.palette;
+        const tones = [pal.grainDark, pal.coarse, pal.patchDark].map((c) => parseInt(c.slice(1), 16));
+        let seed = (ix * 73 + iz * 149) >>> 0;
+        const rng = (): number => {
+          seed = (seed * 1664525 + 1013904223) >>> 0;
+          return seed / 4294967296;
+        };
+        const r = id === "pebble_gravel" ? 0.008 + rng() * 0.014 : 0.014 + rng() * 0.022;
+        const rock = makeRockMesh(r, tones[placed % 3], rng);
+        rock.position.x = x;
+        rock.position.z = z;
+        rock.position.y += dims.substrateTop + terrainHeightAt(this.terrain, dims, x, z);
+        rock.rotation.y = rng() * Math.PI * 2;
+        rock.castShadow = false;
+        group.add(rock);
+        placed++;
+      }
+    }
+    if (group.children.length > 0) {
+      this.matDecor = group;
+      this.scene.add(group);
+    }
+  }
+
+  /** Live terrain readouts for the drawer's tool-context card: peak dune,
+   *  deepest dig, damp coverage, and the centre-line elevation profile. */
+  private terrainInfo(): { reliefCm: number; deepCm: number; wetPct: number; profile: number[] } {
+    let peak = 0;
+    let deep = 0;
+    for (const h of this.terrain.heights) {
+      if (h > peak) peak = h;
+      if (h < deep) deep = h;
+    }
+    const dims = this.state.layout.dimensions;
+    const profile: number[] = [];
+    for (let i = 0; i < 48; i++) {
+      const x = (i / 47 - 0.5) * dims.width * 0.96;
+      profile.push(terrainHeightAt(this.terrain, dims, x, 0));
+    }
+    return { reliefCm: peak * 100, deepCm: -deep * 100, wetPct: this.waterFracCached * 100, profile };
+  }
+
+  /** Re-displace the sand mesh + decal overlays from the sculpted height map,
+   *  and re-seat the scattered pebbles so they ride the dunes instead of sinking. */
   private applyTerrainVisuals(): void {
     const dims = this.state.layout.dimensions;
     const sand = this.scene.children.find((c) => c.userData?.sand) as THREE.Mesh | undefined;
     if (sand) applyTerrainToSand(sand, this.terrain, dims);
     this.overlay.applyTerrain(this.terrain);
+    this.analysis.applyTerrain(this.terrain);
     const pebbles = this.scene.children.find((c) => c.userData?.pebbles);
     if (pebbles) {
       for (const p of pebbles.children) {
         p.position.y = dims.substrateTop + terrainHeightAt(this.terrain, dims, p.position.x, p.position.z);
+      }
+    }
+    // Painted material stones ride the dunes too.
+    if (this.matDecor) {
+      for (const p of this.matDecor.children) {
+        const mesh = p as THREE.Mesh;
+        const rest = -(mesh.geometry.boundingBox?.min.y ?? 0);
+        p.position.y = rest + dims.substrateTop + terrainHeightAt(this.terrain, dims, p.position.x, p.position.z);
       }
     }
   }
@@ -2099,6 +2978,8 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
       removeWasteNow: () => this.removeWasteNow(),
       cleanStatus: () => this.cleanStatus(),
       cleanHover: (ground, scrubbing, radius, tool) => this.cleanHover(ground, scrubbing, radius, tool),
+      setCleanScrubbing: (on) => this.setCleanScrubbing(on),
+      pourAt: (ground) => this.pourAt(ground),
       wipeHover: (pt, wiping) => this.wipeHover(pt, wiping),
       wipeStrokeAt: (x, y) => this.wipeStrokeAt(x, y),
       glassPane: () => this.glassPane(),
@@ -2130,11 +3011,22 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
       feedHover: (ground, method) => this.feedHover(ground, method),
       clearFeedHover: () => this.clearFeedHover(),
       setGeckoHover: (on) => this.setGeckoHover(on),
-      sculptAt: (tool, x, z, radius) => this.sculptAt(tool, x, z, radius),
+      sculptAt: (tool, x, z, radius, strength) => this.sculptAt(tool, x, z, radius, strength),
       setStrongBrush: (on) => {
         this.strongBrushOn = on;
       },
       strongBrush: () => this.strongBrushOn,
+      terrainHover: (ground, radius, glyph, active) => this.terrainHover(ground, radius, glyph as CursorGlyph, active),
+      clearTerrainHover: () => this.clearTerrainHover(),
+      setAnalysisFilter: (id) => this.setAnalysisFilter(id),
+      setAnalysisOpacity: (frac) => this.setAnalysisOpacity(frac),
+      setAnalysisIntensity: (frac) => this.setAnalysisIntensity(frac),
+      filterReadout: (id) => this.filterReadout(id),
+      filterMapCanvas: () => this.filterMapCanvas(),
+      substrateInfo: () => this.substrateInfo(),
+      paintMaterialAt: (id, x, z, radius) => this.paintMaterialAt(id, x, z, radius),
+      paintStrokeEnd: () => this.paintStrokeEnd(),
+      terrainInfo: () => this.terrainInfo(),
       debugOptions: () => this.debugOptions(),
       toggleDebugOption: (key) => this.toggleDebugOption(key),
     };
@@ -2425,6 +3317,7 @@ export class ThreeLizardScene implements HabitatScene, EditableHabitat {
       clipNames: this.animal?.clipNames ?? [],
       feederCount: this.state.feeders.filter((f) => f.alive).length,
       debugOn: this.debugOn,
+      substrateName: this.appliedTerrain().name,
     };
   }
 
