@@ -5,6 +5,382 @@ decision → consequences.
 
 ---
 
+## 2026-07-05 — Main menu v23: a rendered ATRIUM backdrop + live UI (reverses the v21 CSS-3D-room decision)
+
+**Context.** The user named a single source of truth for the main menu:
+`Designs/Main_Menu/ChatGPT Image Jul 5, 2026, 12_25_17 AM.png` — a cozy premium
+**circular atrium** eco-center. Three prior attempts to hand-draw the
+environment (v20 CSS wall, v20.1 cinematic pass, v21 one-point-perspective
+CSS-3D room) were each rejected as "flat / prototype / boxes in a 3D room," and
+v21's rectangular room is the wrong composition entirely (it was built from the
+12_25_29 board, not 12_25_17). The user asked to match 12_25_17 "extremely
+close … release-quality," explicitly allowing a full rebuild and "whatever gets
+closest."
+
+**Decision.** Stop hand-drawing the environment. Render the atrium as a painted
+BACKDROP plate and overlay the real, live, wired UI on top (asked the user
+first; they chose this over reusing the reference file or hand-building the
+rotunda). The plate is **generated with gpt-image-1** to match the reference
+composition — a UI-free art asset, NOT the reference screenshot — curated to
+`public/assets/ui/hub/eco_center_atrium.jpg`. All interaction stays real DOM:
+5 habitat hotspots + signage aligned to the painted displays, top ribbon,
+brand + Continue, live Current Habitats, daily-care card, dock, restoration
+modal. `src/ui/homeHub.ts` was rebuilt (the CSS-3D scene deleted); the HomeHub
+class API + HubMeta + app.ts are unchanged.
+
+**Why this over the alternatives.**
+- *Hand-drawn CSS/3D* (v20–v21) cannot reach a painted atrium at Steam quality —
+  proven three times. This is the approach the user kept rejecting.
+- *Pasting the reference file* would ship its baked-in UI (no live scores/
+  reminders) and is what the user earlier forbade ("don't paste the reference
+  as the UI").
+- *A generated UI-free plate* gives the painted fidelity while the UI stays
+  live — and it's consistent with existing practice: the game already renders a
+  room backdrop (`ASSETS.room.ecocenter`) behind the 3D habitats.
+
+**§9 exception.** CLAUDE.md §9 ("reference images are visual targets, not static
+backgrounds") is about not shipping the *reference* as a fake background; a
+purpose-generated menu backdrop art asset is a legitimate game asset (same class
+as the habitat room plate). Logged the spend in api_usage_log.md.
+
+**Consequences.** The hub is now art-plate-driven: swapping the JPG restyles the
+whole menu, and hotspot positions (viewport-% in `HOTSPOTS`) must be re-tuned if
+the plate's composition changes. The v21 CSS-3D room + its rules (plane-crossing,
+decorative-face pointer-events) are retired for the hub (git history keeps them).
+Three.js is unaffected (still habitat-only). Known minor gaps vs. the reference
+noted in STATUS.md.
+
+---
+
+## 2026-07-04 — Inventory pass (v19.1): default layouts count as owned, pre-rendered turntables, bulk sell
+
+**Context:** "Perfect the Inventory and make sure everything works." The
+audit found a fresh profile showed ZERO decorations (in-use counts only
+read habitat saves, which don't exist before the first visit), glyph
+tiles where real art exists, and three reference buttons (Rotate / Edit /
+Bulk Actions) that were missing or placeholder.
+
+**Decisions:**
+1. **The authored default layouts are the player's property.** When a
+   habitat has no save yet, its default layout's pieces count as "in
+   habitat" (`app.decorInUse()`); the moment a real save exists it wins.
+   No phantom counts, no empty first-run tabs.
+2. **Rotate = pre-rendered turntable frames, not runtime three.js.** The
+   hub stays 2D: the extraction script renders 4 yaw frames per piece
+   offline (`ThumbVariant.yaw`); the button pages static PNGs and falls
+   back to the base frame if one is missing. Tests pin all 4 frames on
+   disk per unlocked piece.
+3. **Reference "Remove" stays "Sell" and "Edit" opens Decorate.** Sell
+   refunds 60% (economy beats mockup fiction, standing ADR); Edit
+   deep-links into the vivarium's Decorate mode unarmed via the same
+   bounded-retry pipeline as Place — real machinery, no new editor
+   surface.
+4. **Bulk Actions ships with one real action** (sell all spares — pure
+   `sellAllSpares`, per-piece floor identical to single sales) plus a
+   Shop jump, instead of a future-toast. Fish-food product photography
+   remains the only glyph lane, honestly.
+
+---
+
+## 2026-07-04 — Care Guide pass (v19): live-capture art pipeline, universal back pill, self-exiting photo mode, quiz removed
+
+**Context:** Direct user feedback: no visible back buttons on the door
+screens, photo mode strands you after a shot, and the Care Guide should
+feel like a real game encyclopedia — actual in-game imagery per topic,
+plainly written accurate Learn-more content, no quiz box, pointer cursors.
+
+**Decisions:**
+1. **Guide imagery = live captures, never stock or mockup crops.** A new
+   `__habitat3d.setView(pos, target)` QA hook places the free camera
+   exactly; the scratchpad capture script hides the HUD and clips JPEGs
+   from the running game (heroes + all Habitat Setup essentials). The
+   careguide test suite requires every referenced art path to exist on
+   disk, so dead art fails CI. Consequence: after major redecoration of
+   the vivarium, rerun the capture script so the guide matches the tank.
+2. **One back affordance for every full-screen door** — `gwBackPill()` in
+   gwTheme, mounted top-left in each screen's own header (works with both
+   hosting models: HubScreens cases call `cb.close()`, standalone overlays
+   call their own `close()`). The Supply Shop gained the `close` callback
+   it never had. Footer backs stay for reference fidelity.
+3. **The shutter ends Photo Mode.** Capture → flash → escape whichever
+   mode machine is in "photo". The flash masks the camera re-anchor, so
+   the transition reads as one beat (the standard game pattern).
+4. **Quiz CTA deleted, not deferred.** The reference's "Track Your
+   Knowledge" box promised a system that doesn't exist; the user asked
+   for its removal. Its sidebar slot now holds a rotating true "Did You
+   Know?" field note (pure `CARE_FACTS`, advances per chapter view) —
+   game-encyclopedia flavor with zero fake promises.
+5. **Copy contract enforced by tests:** every Learn-more note must be a
+   complete sentence (length + terminal punctuation asserted), heroes
+   (except FAQ) must carry a capture + caption, and safety content
+   (solitary, can't-swim, tail autotomy) is pinned by regex.
+
+---
+
+## 2026-07-04 — Final-UI pass (v18): owned-decor economy, standalone vs hosted screens, honest settings rows, the physical hub
+
+**Context:** The last four Designs references (Supply_Shop, Inventory_Screen,
+Photo_Album, Settings_Page) + a home-hub redesign brief landed as one
+autonomous session. The mockups show systems the game lacked (owned item
+quantities, a cart, graphics options like V-Sync/shadows, photo likes/star
+ratings) and the hub was a flat card dashboard the user disliked.
+
+**Decisions:**
+1. **Owned-decor economy loop** (`src/game/decorInventory.ts`): the Shop
+   sells real catalog pieces into a persisted owned store; Decorate-mode
+   placement consumes an owned piece FIRST and only charges leaves when
+   none are spare — the classic pay-on-place path is unchanged otherwise,
+   guarded at the single placement-charge site. Inventory sells spares back
+   at 60% of catalog price (a real sink; full-price sell-back would make
+   buying reversible for free). "In use" counts are READ from the real
+   saved habitat layouts, never tracked separately.
+2. **Two hosting models, chosen by return-path**: Shop + Inventory stay
+   HubScreens cases (hub-only destinations); Photo Album + Settings are
+   STANDALONE fullscreen overlays because in-habitat HUD buttons open them
+   and closing must return to the habitat, not the hub (the HubScreens
+   host's close() re-shows the hub). This preserved every existing
+   openAlbum/openSettings call site's behavior while replacing the old
+   AlbumOverlay + SettingsModal outright.
+3. **Settings honesty policy**: every row is (a) live-wired to a real
+   system, (b) a true stated fact (V-Sync/pause-on-blur are
+   browser-managed; view distance really is "the whole tank"), or (c) a
+   FUTURE row that persists its value with an explicit "arrives with the …
+   update" note (music/ambience/shadows/bloom own real pref fields the
+   future systems will read). No dead toggles pretending to work. The
+   image's six tabs beat the prompt template's nine sections (batch rule:
+   the screenshot is the source of truth).
+4. **Real data over reference fiction, extended** (v17 policy): shop prices
+   ARE the economy's; bundle prices are Σ(real contents) minus the stated
+   discount; album stats are counted, "likes/star ratings" (multiplayer
+   fiction) became favorites + a Showcase of favorites/covers; inventory
+   rarity/size/biome are presentation WORDS derived from real
+   price/measured extents/authored tags (scoreWord precedent); supplies'
+   "Substrate"/"Care Tools" shop lanes honestly sell nothing.
+5. **The hub is a physical room, not cards**: the three real tank plates
+   render as lit glass displays (sheen, lamp cones, stands, one shared
+   shelf, plaques, reflections) with live scores + reminder dots; the
+   fourth bay is honestly draped "in restoration"; the care strip reuses
+   deriveReminders. Class API + HubMeta stash unchanged.
+6. **Catalog art is extracted, not hand-made**: ThreeThumbnails gained a
+   size param + placeholderThumbnail; a one-off script rendered all 29
+   unlocked pieces at 512² into `public/assets/ui/decor_thumbs/` — the
+   Shop/Inventory cards show the ACTUAL models (tint faithfulness matches
+   the in-tank look).
+
+**Consequences:** Decor purchases finally have a home before placement and
+placement has a free-from-inventory path (new toast copy); selling exists
+as a leaves source (60% rate is the knob). Settings replaced a modal that
+three HUDs opened — all callers now open the screen. The old shop/inventory
+v12 hub screens and their CSS are gone. New persisted keys
+(`glasswater.decor.v1`, `glasswater.album.favs/covers.v1`, `gw_playtime.v1`,
+prefs v2 fields) all wipe with the existing reset sweep; prefs still
+survive by design.
+
+## 2026-07-04 — Habitats page: real data over reference fiction; templates stay honest concepts (v17)
+**Context:** The Habitats reference (`Designs/Habitats/`) shows a management
+page populated with a designer's placeholder world: fictional habitat names
+(Sahara Dunes / Riverbend Haven / Mossy Hollow / Crystal Stream / Ember
+Flats), an XP level, a 12-day streak, 128 photos, three canned reminders and
+a 3/6 habitats footer. The game has exactly three real habitats with live
+scores, real saves and real care signals.
+**Decision:** (1) **Owned content shows the player's real world**: "Your
+Habitats" and "Recently Visited" are the three live habitats (Sunstone
+Desert · Sapphire Stream · Emerald Hollow) with LIVE scores (aquarium from
+the running sim; vivarium/paludarium from an extended HubMeta stash that now
+carries cleanliness/hunger/humidity/hydration), and every card actually
+opens its tank. The reference's layout is matched exactly; its fictional
+content is treated as lorem ipsum. (2) **Unowned content is explicitly
+future**: the reference's four template builds keep their aspirational names
+but render as procedural gradient "Concept" tiles (no borrowed tank art)
+whose clicks answer with the honest future-update note — same pattern as
+locked decor/substrates. (3) **Meta numbers are derived, never invented**:
+Eco-Keeper level is a fixed 250★-per-level presentation of real reputation
+(pure `keeperLevel`, tested); Care Streak is a real persisted daily counter
+stamped on habitat entry (`bumpStreak`); Avg. Cleanliness averages the live
+per-habitat signals; photo count reads the real album; Reminders DERIVE from
+the stashed signals (`deriveReminders` — hunger/cleanliness/humidity/
+hydration/nitrate thresholds, urgency-ordered) so a fresh save honestly
+shows "—", "Not visited yet" and "All caught up" instead of fake numbers.
+(4) **Visits are first-class data**: `enterHabitat` stamps real last-visit
+timestamps into HubMeta (drives "Recently Visited" + the default featured
+selection) and the care streak; selecting any card re-features the hero — the
+featured habitat IS the selection. (5) The batch rules from the v16 ADR
+extend unchanged: no left nav (hub doors + a new Habitats door), full-bleed
+over the room, scoped serif display (`--hb-display`), honest status footer.
+**Consequences:** Card/hero art is real in-game renders (canvas-only
+Playwright captures under `public/assets/ui/habitats/` — regenerable as the
+tanks evolve); HubMeta gained nullable signal/visit fields (old stashes heal
+to null and simply show the honest empty states); "Create New Habitat" is a
+polished placeholder until construction ships; the reference's Recently
+Visited row necessarily repeats the same three tanks until more habitats
+exist.
+
+## 2026-07-04 — Care Guide: data-driven chapters, hub-door navigation, derived numbers (v16)
+**Context:** A final Care Guide reference landed (`Designs/Care_Guide/`) as
+part of a NEW batch of full-bleed screen designs (Supply Shop, Inventory,
+Photo Album, Settings, Habitats). The implementation brief's generic template
+asked for a persistent left nav; the reference image (declared source of
+truth) shows none — and neither does any other screen in the batch.
+**Decision:** (1) **The image wins over the template**: no left nav anywhere;
+the hub's doors remain the game's navigation and every full-bleed screen
+carries its own header + Back (the Care Guide's lives in its status footer).
+(2) **Content is a pure data registry** (`src/data/careGuide.ts`): eight
+chapter definitions (hero / info strip / expandable cards / per-tab quick
+reference / checklist / FAQ) rendered by ONE view (`src/ui/careGuide.ts`)
+hosted inside the existing HubScreens overlay — adding a chapter is a data
+edit, and the content contract is unit-tested. (3) **Husbandry numbers are
+DERIVED, never copied**: temperatures are °C bands read from
+`LEOPARD_GECKO.ideal` and formatted through prefs (the °F/°C toggle keeps
+working), feeder cards derive from `FOOD_TYPES` — the guide can never
+contradict the in-game warnings/filters, which read the same sources. Where
+the reference's prose numbers differed slightly (88–92°F warm hide), the
+researched profile wins. (4) **Honest gamification**: the footer shows real
+stats only (Eco Points = leaves — the Supply_Shop reference's own name for
+the currency; "3 restored" habitats; reputation; the in-game clock) — no
+fake achievements/playtime counters; the Track Your Knowledge quiz CTA says
+plainly that quizzes aren't built yet. (5) The batch's serif display face is
+scoped to the screen (`--cg-display`), not pushed into gwTheme, until more
+screens adopt it.
+**Consequences:** The old flat guide's content (nitrogen cycle, species
+encyclopedia) moved into the Overview chapter rather than being deleted;
+checklist `done` flags are static copy for now with live-audit wiring left
+as a roadmap item; Playwright now runs as a local dev dependency (the MCP
+was unavailable), which any future session can reuse for verification.
+
+## 2026-07-04 — A third habitat is a LEAN composition, not a gecko fork (paludarium v15)
+**Context:** The colorful frog needed its rainforest paludarium. The gecko
+scene (~4300 lines) mixes scene + editor + terrain + care; copying it for
+every new habitat would be a maintenance disaster, but the shell/floor/decor
+machinery it uses is genuinely reusable.
+**Decision:** (1) A new habitat = **one pure data module + one lean scene
+class** composing the shared load-bearing pieces: `EnclosureSpec` →
+`buildVivariumShell` (styling via small options like the new
+`backPanel: "rainforest"`, defaults untouched), `HabitatMaterialMap` +
+`MaterialFloor` for a painted floor, the shared decor pipeline
+(placeholders → GLBs + measured footprints), `HabitatSaveLoad` under the
+layout's own id, and a species controller (`ThreeFrogHopper` grew `scale`
+for the habitat world scale and a `freeSpot` hook so hop landings clamp out
+of the measured-contour CollisionWorld). Editors/terrain tools are NOT part
+of a habitat's v1 bar — the dock ships only the species' real care verbs
+(Feed / Mist / Info for an amphibian). (2) **Species needs live in their own
+pure module** (`FrogNeedsSystem`): hydration is the amphibian's load-bearing
+axis (humidity/mist/pond), tuned to SESSION pacing (the first cut drained
+~20×/min too fast — same lesson as the gecko hunger fix). (3) **Substrate
+unlock semantics stay data-driven**: `TerrainDef.habitats` gates per habitat
+type; `tropical_terrarium` unlocks bioactive/mossy/leaf-litter that stay
+locked in the desert. (4) The hub gains a card + `HubMeta` stash per
+habitat; each habitat gets its own `GwModeMachine` home mode.
+**Consequences:** ThreeFrogScene is ~700 lines for a full playable habitat;
+habitat #4 (bird/turtle/…) has a template to follow; the gecko flagship
+stays the only scene carrying editor complexity until Decorate is
+generalized deliberately.
+
+## 2026-07-04 — Dev environment: stat-polling watcher over iCloud fsevents (tooling)
+**Context:** The repo lives in iCloud-synced `~/Documents` ("Desktop &
+Documents" sync ON, files evicted under Optimize Storage). macOS fseventsd
+ghost-replays events for files whose mtimes never changed, so Vite
+phantom-restarted (`vite.config.ts changed` / `.env changed`) every few
+seconds and killed verification flows across three sessions; node_modules
+eviction also explains the historical tsc crawls.
+**Decision:** `server.watch.usePolling: true` (interval 800 / binary 2500)
+with **root-anchored** ignore globs for the non-runtime art/docs trees.
+Polling compares real stats, so ghost events can't fire. Gotcha now
+documented in the config: a bare `**/assets/**` glob ALSO matches
+`public/assets/**`, and the public-file registry is maintained by this same
+watcher — new public files then fall back to index.html when requested.
+**Consequences:** 17 phantom restarts before → 0 after; HMR latency ≤0.8 s.
+The real cure remains moving the repo out of iCloud-synced Documents (or
+disabling Optimize Storage) — recommended to the user.
+
+## 2026-07-03 — Rigged creatures in the shared pipeline (colorful frog, v14)
+**Context:** The first commissioned rigged asset arrived (red-eyed tree frog:
+Rigify skeleton + one baked breathing-idle clip). The creature pipeline was
+built for unrigged part-separated models (spatial classifier + joint
+re-pivoting + procedural oscillators), and the frog's real habitat
+(rainforest/paludarium) doesn't exist yet.
+**Decision:** (1) **Rigged = a loader branch, not a new pipeline** — same
+registry, same Lab, same controllers list; `asset.rig.clips` maps behaviour
+alias → EXACT clip name and missing aliases are never faked (hops are
+procedural until clips are commissioned). (2) **Instances clone via
+SkeletonUtils** (plain `clone()` leaves skins bound to the master's bones).
+(3) **Normalize from the POSED skin, not the bind pose** — this asset's bind
+pose is a rig-default upright; the display pose lives in the clip, so the
+loader poses the mapped idle at t=0 and measures `SkinnedMesh.
+computeBoundingBox` (bind-pose measuring produced a 21 cm standing ghost vs
+the true 6 cm crouch). Assume future rigged deliveries have the same trait.
+(4) **`locked` on CreatureSpecies** (human-readable reason) gates species
+whose habitat doesn't exist — visible in the dev Lab with the reason +
+asset-readiness line, excluded from player-facing spawning (which is by
+explicit id anyway). (5) **`tools/prep-rigged-creature.mjs`** owns runtime
+prep (texture resize via sips, junk-node strip, never touches sources)
+because the gltf-transform CLI cannot run on this machine's Node v20.6.0.
+**Consequences:** the freelancer gecko drop-in path gains a proven rigged
+route through the creature system; more clips = registry-only change; the
+frog ships data-complete for the future rainforest milestone; prep tool is
+reusable for every rigged delivery.
+
+---
+
+## 2026-07-03 — Decorate Mode v2: variants over new art, honest locks, effects data (v13)
+**Context:** The Decorate brief called for ~34 named decor objects across five
+categories (Plants / Rocks / Caves & Hides / Utilities / Decor), per-object
+habitat effects, snapping, tighter collision and a placement preview — but the
+project owns only 7 real decor GLBs, and collision was already mesh-measured
+(contours + heightfields).
+**Decision:** (1) **Variants over new art** — one GLB serves several catalog
+entries distinguished by per-axis `defaultScale` + material `tint` +
+interaction + stats (the v11 same-GLB-variant precedent, now systematic). The
+collision compiler already applies per-axis scale to measured contours and
+heightfields, so variant collision is correct by construction. Tint clones
+materials (the decor cache shares them); thumbnails cache per
+file+tint+scale. (2) **Honest locks** — objects that would read as pure
+duplicates ship as LOCKED cards ("Art in production" / "Future humid
+habitat") rather than fake variants: data-complete, visible in the catalog,
+never placeable. (3) **Two stat layers stay** — `affectsStats` (0..100 score
+contributions, already tuned + tested) and the new 0..10 `effects` card
+meters serve different readers; a consistency test ties them loosely.
+Deriving one from the other risked regressing the tuned habitat score for no
+player value. (4) **Duplicate = purchase** — duplicating a placed piece runs
+the same economy gate + charge as placing it (found as a free-decor exploit
+during live verification). (5) **Terrain-true placement** — floor props seat
+on the sculpted heightmap at place/move/snap-to-floor; the steep-slope rule
+that gates the gecko's navigation also gates placement, so players can't
+wedge decor onto walls the animal can't use. (6) The **Basking Lamp Marker
+is not a placeable**: the lamp is part of the EnclosureSpec-derived shell;
+making it placeable would fork the zone/environment model.
+**Consequences:** 32 catalog entries ship from 7 GLBs + 6 procedural shapes;
+saves stay compatible (legacy defIds preserved, rehydrate heals asset+tint);
+five cards are explicit art-debt (Rock Arch, Arch Hide, Cork Hide, Skull
+Accent, Tropical Fern); when real art lands, a variant upgrades by swapping
+`asset` on its def — no save migration needed.
+
+---
+
+## 2026-07-03 — One unified game: hub-first navigation, legacy retired (v12)
+**Context:** The player-facing build was three stapled experiences: the
+polished gecko vivarium (gw UI), the old dark-teal 2D aquarium (the historical
+default), and two 3D views (fish/spider) wearing the WRONG 2D HUD — the spider
+was a bare placeholder box. Navigation was a corner debug switcher.
+**Decision:** (1) A **HOME HUB** is the entry screen and the only player
+navigation (habitat cards + Shop/Inventory/Guide/Album/Settings doors); both
+habitat HUDs get a ⌂ pill back. (2) The **fish tank is rebuilt as a real gw
+habitat** on the existing 3D scene, DRIVEN BY the existing deterministic
+nitrogen-cycle sim (`src/core/sim.ts`) — the sim survives as the aquarium's
+brain, the old 2D chrome does not. (3) **Spider + 2D aquarium become dev-only**
+(`?habitat=spider`, `?tank=2d`; the corner switcher requires `?dev=1`); the 2D
+game additionally remains the automatic WebGL-failure fallback, so the code
+stays but no player path shows it. (4) **Part-hinge animation is banned for
+fish silhouettes**: part-separated swimmers fuse to one mesh + the bounded
+body-wave (`ThreeFusedSwimmer`) — hard-cut hinge seams read as the body
+falling apart; invertebrates keep part animation where cuts read as
+segmentation.
+**Consequences:** One design language everywhere; the fish scene gained care
+hooks (`AquariumHooks`) instead of a controller fork; the LizardController
+pattern stays lizard-only. The 2D renderer/HUD/screens are dormant code kept
+for fallback — delete only when a WebGL-fallback replacement exists. Economy
+(stock + decor prices) now spans both habitats, so future habitats must budget
+their consumables in `src/game/economy.ts`.
+
 ## 2026-07-01 — Feeding is real husbandry + staged presentations (v8)
 **Context:** Feeding was "insects appear, hunger goes up 20" — one number, no
 methods, no nutrition, insects as wandering particles the gecko could stand on.
@@ -583,3 +959,101 @@ cost.
 - **Hanging props FALL when unsupported** (rather than flagging red in place or
   prompting to reattach) — deterministic, self-explanatory in the event log, and
   trivially pure-testable (`settleHanging`).
+
+## 2026-07-05 — The main menu IS the eco-center: a self-drawn lodge, data-driven rooms
+
+- **The hub is a place, not a dashboard.** `Designs/Main_Menu/` (7 boards)
+  replaced the v18 display wall with a full research lodge. We synthesized the
+  boards instead of copying one: board #2's stemmed sign chips + numbered-wall
+  layout, #5's lounge mood/footer motto, #3/#4's resource + restoration bars,
+  #1's daily-care card. The isometric cutaway (#6) was rejected for v1 — a flat
+  wall composition ships at quality now; isometric is a future pass.
+- **No pasted backgrounds — the scene is CSS and real game art.** Rule kept
+  from every prior screen: reference images never render in-game. The lodge is
+  gradients/DOM (wall, clerestory dusk, beams, lamps, floor, furniture); the
+  only bitmaps are REAL content — live tank render plates, the player's actual
+  album captures on the Photo Wall, and shop decor renders on the Supply
+  Corner shelves. A fresh profile honestly shows empty photo frames.
+- **Rooms are a pure registry** (`src/data/ecoCenter.ts`): id/label/subtitle/
+  icon/desc + a typed action (habitat | screen | locked). The hub builds
+  chips, stems, units and wiring from the list — adding a future room is a
+  data edit. Scene geometry (UNIT_GEOM) stays in the UI layer because it is
+  presentation, not content.
+- **Stage-relative geometry over viewport-fixed.** Lamps, wall pools, stems
+  and posts live inside the same %-based stage as the furniture, so alignment
+  survives every viewport; overlay panels are px-clamped. Panels that must
+  never collide are grouped in flex stacks (`.rightstack`) instead of being
+  independently pinned. Non-essential panels (Restoration card) drop first
+  below 1560px.
+- **Honesty constraints carried into the menu**: keeper level is the existing
+  reputation presentation (no XP system), restoration progress is the real
+  3-of-4 bays (75%) with "Cloudridge Wetlands" as the next wing's project
+  NAME (fiction naming allowed; fake progress numbers are not), the Daily
+  Care card derives from live `deriveReminders`, and the locked wing opens a
+  modal that says exactly what it is: a future update.
+- **Class API frozen.** HomeHub's constructor/show/hide/update/HubMeta stayed
+  byte-compatible with v12 — the whole replacement landed without touching
+  `app.ts`, and the door screens/back pills were re-verified by the drive.
+
+## 2026-07-05 — Main Menu V2: cinematic depth stays CSS-drawn (v20.1)
+
+The user's follow-up ("too flat, too prototype-like — closer to the boards")
+was answered INSIDE the same architecture, not by pasting art:
+
+- **Depth is layered light, not bitmaps.** Rafter ceiling, mullioned dusk
+  windows, per-habitat light hues (amber/aqua/green wall wash + glass
+  rim-light + rack underglow + floor spills), a full-scene vignette and
+  foreground foliage are all gradients/DOM. The only NEW bitmap is the
+  existing fernbush sprite reused as a darkened silhouette — still real
+  game art, still no reference pasted.
+- **Empty cabinets became mini-tank racks** (six small glowing set-dressing
+  tanks). They are scenery like the sofa — deliberately unlabeled and
+  non-interactive so only the three REAL habitats + the locked wing read as
+  actionable. Honesty rule holds: nothing implies content that doesn't exist.
+- **Chips are in-world plaques now**: anchored just above their feature on a
+  short soft stem (the v20 beam cords read as mockup callouts — deleted),
+  dark wood-glass style, green-badge cream icons, green hover glow.
+- **A painted background plate is the sanctioned upgrade path** (not a
+  requirement): spec + integration seams documented in CLAUDE_HANDOFF so a
+  future 16:9 no-UI plate can replace the CSS envelope 1:1 while every live
+  layer (real tank plates, chips, spills, vignette) stays DOM.
+
+## 2026-07-05 — Main Menu v21: a TRUE perspective room in CSS 3D (Option B; Three.js stays habitat-only)
+
+**Context.** After v20.1 the user rejected the flat-wall composition outright
+("still a flat CSS/DOM wall … I want a true 3D/isometric-looking Eco-Center
+hub") and offered two implementation paths: a real Three.js hub scene
+(Option A) or a layered-perspective rebuild (Option B).
+
+**Decision.** Option B — the hub scene is a genuine one-point-perspective
+room built with CSS 3D (`perspective` on `.scene`, `preserve-3d` planes for
+floor/ceiling/walls, volumetric tank boxes, a deeper lake plane behind a real
+doorway gap, pointer-driven perspective-origin parallax), composed to the
+`Designs/Main_Menu/…12_25_29 AM.png` lodge-interior board.
+
+**Why not Three.js here.**
+- The hub is the BOOT screen: a Three.js hub front-loads a ~300 kB-gzip
+  chunk before the player sees anything, and would require keeping a second
+  DOM hub alive as the WebGL-failure fallback — two main menus to maintain.
+- The project's architecture rule holds Three.js to the isolated habitat
+  viewport; the hub staying DOM keeps "2.5D look, 2D implementation" true
+  while CSS 3D applies the same projective math to planes (GPU-composited).
+- Every interaction (7 hotspots, modal, panels, live photo pins, tooltips,
+  focus) stays plain DOM — near-zero regression surface for the frozen
+  HomeHub class API. Proven: 46/46 interaction drive, 0 console noise.
+
+**Rules learned (bind future edits to this scene):**
+1. **No placed plane may CROSS another plane.** Chromium's preserve-3d
+   plane-splitting is nondeterministic for intersecting planes (the couch
+   billboard crossing the floor rendered as a pale ghost on SOME loads).
+   Near-camera props therefore live in a flat overlay ABOVE the 3D room
+   (which also strengthens the parallax read); glows attach to the plane
+   they light (wall washes / floor pools), never as crossing billboards.
+2. **Decorative faces are `pointer-events: none`.** Chromium's 3D hit test
+   can return a farther face for a point where a nearer face is visible;
+   only art faces, cabinet fronts and chips take clicks.
+3. Geometry is u-unit-relative (u = scene height / 100) and re-projected by
+   `layoutRoom()` — never hard-code px in the room.
+4. Painted per-plane art (floor/walls/props) is the sanctioned visual
+   upgrade path; the 3D structure, live tank plates, photo pins and chips
+   stay DOM.

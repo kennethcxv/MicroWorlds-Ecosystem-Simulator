@@ -156,10 +156,27 @@ for the asset scripts in `tools/` + GLB inspection.
     `zebra_danio`, `otocinclus`, `mystery_snail`, `daphnia`, `isopod` — one GLB
     per registry id, textures ≤1024²; sources under `3D_Assets/<Animal>/`,
     never modified). Fully data-driven from `src/data/creatures/`; the
-    part-separated meshes animate procedurally (no rigs). Dev viewer:
-    **`?habitat=creatures`** (Creature Lab — URL-only, never persisted, not in
-    the player habitat switch). Pipeline + "add animal #11" steps:
-    `docs/production/CREATURE_BATCH.md`; GLB inspection: `tools/inspect-glb.mjs`.
+    part-separated meshes animate procedurally (no rigs). **PLUS animal #11:
+    `colorful_frog.glb`** — the first COMMISSIONED rigged animal (red-eyed
+    tree frog; source `3D_Assets/Red_Eyed_Green_Tree_Frog/`, prepped by
+    `tools/prep-rigged-creature.mjs`): skinned Rigify mesh, ONE baked clip
+    (`"Animation"` = breathing idle) mapped via `asset.rig.clips`, hops
+    procedural. PROMOTED in v15: it lives in the Emerald Hollow rainforest
+    paludarium. **v22: a full frog ANIMATION SYSTEM** — 35 behavior states
+    mapped in the pure `src/data/creatures/frogAnimationMap.ts` (real GLB
+    clips always preferred → 23 PROCEDURAL fallback clips built as real
+    `AnimationClip`s on the captured crouch base pose → 11 honestly-missing
+    states for Fiverr; never fake eyelids/jaw/tongue — the rig has none),
+    played via `FrogClipPlayer`. ⚠ The exported rig ships SEVERAL
+    independent top-level bone subtrees (constraints stripped) — whole-body
+    motion must drive them ALL (`BODY` target in `FrogProceduralClips.ts`).
+    Dev viewers: **`?habitat=creatures`** (Creature Lab) and
+    **`?habitat=froglab`** / `?debugFrog=1` (**Frog Animation Lab** — play
+    every state, source badges, missing list, copy-report; both URL-only,
+    never persisted, not in the player habitat switch). Pipeline + "add
+    animal #12" steps: `docs/production/CREATURE_BATCH.md` (§10 = rigged
+    animals); GLB inspection: `tools/inspect-glb.mjs`; rig report + Fiverr
+    brief: `docs/CLAUDE_HANDOFF.md` §v22.
   - **Pending freelancer drop-in:** `public/assets/3d/habitats/lizard/
     leopard_gecko_animated.glb` — the final rigged leopard gecko. Auto-detected +
     used when present (else a procedural placeholder gecko is used). Expected
@@ -167,9 +184,18 @@ for the asset scripts in `tools/` + GLB inspection.
     by alias, missing clips degrade gracefully, never crash. Full spec:
     `docs/production/ANIMAL_ASSET_PIPELINE.md`.
   - Never load from absolute Windows paths in runtime code.
-- Select a 3D habitat: the on-screen **2D Aquarium / 3D Fish / 3D Spider /
-  3D Lizard** buttons, or `?habitat=fish|spider|lizard` (implies 3D), or
-  `?tank=3d|2d`. Choice persisted in `localStorage`.
+- Select a habitat: the **HOME HUB** (the game's entry screen — habitat cards
+  for the vivarium + aquarium + paludarium with live scores, Continue, and
+  Habitats/Shop/Inventory/Guide/Album/Settings doors; `src/ui/homeHub.ts`),
+  or the **Habitats management page** behind its door (featured hero card +
+  rows + reminders; `src/ui/habitatsScreen.ts`). Every
+  habitat HUD carries a ⌂ home pill back. The old corner switcher is
+  **dev-only** (`?dev=1`). Dev/QA URLs still jump straight in:
+  `?habitat=fish|spider|lizard|frog|creatures|froglab` (spider + the two
+  dev labs never appear in the player UI; `?debugFrog=1` = froglab alias)
+  and `?tank=2d` for the legacy 2D aquarium (also the automatic
+  WebGL-failure fallback). The last player habitat persists in
+  `localStorage` (`gw_habitat`); plain loads always boot the hub.
 - The 3D habitats use **OrbitControls** (middle-mouse or left drag = rotate,
   wheel = zoom, right drag = pan) — inspect the tank from any side. Land animals
   play **idle/walk/run** clips with distance-driven feet + turn-bend (see
@@ -184,15 +210,36 @@ for the asset scripts in `tools/` + GLB inspection.
 
 ## 4. Current Milestone
 
-- **Phase:** Phase 1 (Main Aquarium Screen) ✅ done + Phase 2 (Core Sim) ✅
-  largely done; currently in a **Phase 3 "alive/gloss" polish pass**.
-- **Current goal:** glossier glass + better creature animation (done), plus a
-  parallel **habitat-foundation** track — the lizard terrarium is now a reusable,
-  data-driven, collision-aware, feedable habitat awaiting the freelancer's rigged
-  gecko drop-in. Then continue the roadmap (habitat editor next).
-- **Current visual target:** `01_reference_screens/01_main_aquarium_management_target.png`
-  — cozy eco-center room, physical glass tank on wooden stand, lush planted
-  aquascape, dark-teal glassmorphism UI.
+- **Phase:** ONE UNIFIED GAME (v15). Player-facing experience = **Home Hub +
+  Gecko Vivarium + 3D Fish Aquarium + Rainforest Paludarium ("Emerald
+  Hollow", the promoted colorful frog)**, all in the gw design system. The
+  old 2D aquarium and the spider box are legacy (dev URLs / WebGL fallback
+  only). The vivarium's Decorate Mode is a full five-category habitat
+  builder (Decor Catalog v2 — 32 pieces, variants + locked art-pending
+  cards); the creature pipeline supports RIGGED animals.
+- **Current goal:** the Designs reference batch is FULLY APPLIED (Care
+  Guide ✅ v16 · Habitats ✅ v17 · Supply Shop / Inventory / Photo Album /
+  Settings ✅ v18 · **Main Menu ✅ v23 — THE ATRIUM** (rendered atrium
+  backdrop `public/assets/ui/hub/eco_center_atrium.jpg`, generated with
+  gpt-image-1 to match `Designs/Main_Menu/…12_25_17 AM.png`, NOT the
+  reference file, with the real live UI + 5 clickable habitat hotspots
+  overlaid; `src/ui/homeHub.ts` rebuilt, class API + app.ts unchanged; the
+  v21 CSS-3D room is retired — ADR in DECISIONS.md) — plus the owned-decor
+  economy loop: Shop sells real pieces → Inventory owns them → Decorate
+  placement consumes them, sell-back at 60%). Next: deepen the
+  three live habitats (fish decorate/aquascaping, frog-tank cleaning +
+  decorate, collection book, tasks), restoration gameplay behind the locked
+  wing, land real art for the 5 locked decor cards (Tropical Fern now has a
+  home waiting), product photography for supply packs, commission the
+  frog's hop/walk/eat clips, and keep the freelancer gecko drop-in path
+  warm.
+- **Current visual target:** the gecko habitat's reference-match gw UI is the
+  bar for every screen (see `Designs/Gecko/` + DESIGN_REFERENCE_MAP.md); the
+  fish habitat matches it, and every menu screen matches its OWN final
+  reference (`Designs/Care_Guide|Habitats|Supply_Shop|Inventory_Screen|
+  Photo_Album|Settings_Page` — serif display over sans body, scoped
+  per screen; the hub is the `Designs/Main_Menu/` research lodge — the
+  physical-room translation of the same language).
 - **Blocking issues:** none known. (Dev server must be (re)started per session;
   verify with Playwright after visual changes.)
 
@@ -207,7 +254,7 @@ See `docs/production/STATUS.md` for the live status and
 npm install          # install deps
 npm run dev          # Vite dev server (http://localhost:5173)
 npm run typecheck    # tsc --noEmit
-npm test             # vitest run — pure-sim + data + habitat/editor/care/ui-mode/creature tests (402 tests)
+npm test             # vitest run — pure-sim + data + habitat/editor/care/ui-mode/creature tests (585 tests)
 npm run test:watch   # vitest watch mode
 npm run build        # tsc --noEmit && vite build
 npm run preview      # preview the production build
@@ -280,8 +327,17 @@ src/
   data/    assets.ts species.ts aquaticCodex.ts swim.ts plants.ts hardscape.ts tanks.ts water.ts
            terrains.ts (substrate materials registry — swatches/palettes/stats/unlocks)
            terrainTools.ts (Terrain-editor tool registry) habitatFilters.ts (7 analysis filters)
+           careGuide.ts (Care Guide chapters — pure content registry, temps derived from care profiles)
+           habitats.ts (Habitats page — card registry + keeper-level/streak/reminders derivations, pure)
+           shopCatalog.ts (Supply Shop — real products/bundles/cart math, pure)
+           inventoryPage.ts (Inventory — categories/items/rarity-size-biome words, pure)
+           photoAlbum.ts (Photo Album — caption→collection grouping + counted stats, pure)
+           settingsSchema.ts (Settings — six tabs of pref-wired/info/future rows, pure)
            creatures/ CreatureTypes.ts creatureRegistry.ts (the 10 self-made animals — pure data)
+                      frogAnimationMap.ts (frog behavior states ↔ clips: GLB-first, procedural fallback, honest missing)
            (TODO: equipment.ts research.ts rescueCases.ts)
+  game/    economy.ts (supplies/stock/prices) decorInventory.ts (owned decor:
+           shop buys in, Decorate placement consumes, sell-back, in-use counts)
   render/  assetLoader.ts canvasRenderer.ts tankScene.ts layers.ts effects.ts fishDeformation.ts
            (TODO: particles.ts split-outs)
   habitats/ (PURE data-driven habitat model — no Three/DOM, unit-tested)
@@ -294,6 +350,8 @@ src/
                    LizardNeedsSystem.ts LizardFeedingSystem.ts LizardController.ts
                    LizardNutrition.ts (real feeder nutrition + supplements + intake)
                    InsectBehavior.ts (prey AI: freeze/flee/wall-steer/tire + collisions)
+           frog/   FrogHabitatData.ts (Emerald Hollow layout/pond/floor paint — pure)
+                   FrogNeedsSystem.ts (amphibian hydration/humidity/mist model — pure)
            creatures/ PartClassifier.ts (anatomy from measured GLB bounds) FlockMath.ts (boids-lite)
   render/three/  (EXPERIMENTAL 3D habitats, lazy-loaded)
            ThreeHabitatRenderer.ts ThreeHabitat.ts            (generic renderer + interface)
@@ -306,13 +364,25 @@ src/
            ThreeRiggedController.ts ThreeGroundController.ts (spider fallback controllers)
            ThreeAssetLoader.ts ThreeFishController.ts ThreeFishAnimation.ts ThreeMaterials.ts (shared)
            ThreeHabitatEditor.ts (Decorate-mode gizmo/placement — TransformControls)
+           ThreeFrogScene.ts (rainforest paludarium: pond/mist/crickets/jungle planting)
            ThreeCreatureLabScene.ts (DEV creature viewer — ?habitat=creatures)
+           ThreeFrogLabScene.ts (DEV Frog Animation Lab — ?habitat=froglab / ?debugFrog=1)
            creatures/ ThreeCreatureLoader.ts ThreeCreatureAnimator.ts (joint-pivoted part animation)
                       ThreeAquaticCreatures.ts ThreeSurfaceCreatures.ts ThreeIsopods.ts (controllers)
+                      FrogProceduralClips.ts (crouch-base procedural AnimationClips; BODY = all top subtrees)
+                      FrogClipPlayer.ts (GLB+procedural playback: crossfade/loop/speed/seek/reset)
   ui/      controller.ts topBar.ts sidePanels.ts bottomActions.ts screens.ts
-           layout.ts icons.ts lizardHud.ts habitatEditor.ts animalInfo.ts
+           layout.ts icons.ts lizardHud.ts fishHud.ts frogHud.ts habitatEditor.ts animalInfo.ts
            gwModes.ts (pure UI mode machine) gwTheme.ts (.gw-* design system)
            gwDrawers.ts (Clean/Feed/Terrain drawers) careModes.ts (H help sheet)
+           homeHub.ts (the physical eco-center display wall) hubScreens.ts (host for self-chromed doors)
+           careGuide.ts (reference-match Care Guide screen — Designs/Care_Guide)
+           habitatsScreen.ts (reference-match Habitats management page — Designs/Habitats)
+           shopScreen.ts (reference-match Supply Shop — Designs/Supply_Shop)
+           inventoryScreen.ts (reference-match Inventory — Designs/Inventory_Screen)
+           photoAlbumScreen.ts (reference-match Photo Album, standalone — Designs/Photo_Album)
+           settingsScreen.ts (reference-match Settings, standalone — Designs/Settings_Page)
+           albumScreen.ts (album STORE: shots + favorites/covers sidecars)
            substrateSelection.ts (pure Terrain-Materials preview/apply state)
            (TODO: cards.ts)
   utils/   math.ts dom.ts        (TODO: color.ts)
@@ -323,11 +393,16 @@ tests/     rng.test.ts sim.test.ts save.test.ts codex.test.ts
            surfacesampler.test.ts feet.test.ts enclosure.test.ts migrate.test.ts
            uimode.test.ts dirtspots.test.ts
            nutrition.test.ts dish.test.ts insects.test.ts
-           creatures.test.ts partclassifier.test.ts flock.test.ts
+           creatures.test.ts partclassifier.test.ts flock.test.ts froganim.test.ts
            terrains.test.ts substrate.test.ts filters.test.ts terraintools.test.ts
-           materialmap.test.ts
+           materialmap.test.ts decorcatalog.test.ts
+           frogneeds.test.ts froghabitat.test.ts (the paludarium's pure layer)
+           careguide.test.ts (Care Guide content contract)
+           habitatspage.test.ts (Habitats page data contract)
+           decorinventory.test.ts shoppage.test.ts inventorypage.test.ts
+           photoalbum.test.ts settingspage.test.ts (the v18 screens' pure layers)
            fixtures/creatureParts.ts (REAL measured GLB part bounds — generated)
-           (vitest — 402 tests)
+           (vitest — 585 tests)
 tools/     generate-openai-asset.mjs  edit-asset-with-fal.mjs  remove-backgrounds.mjs
            inspect-glb.mjs (GLB hierarchy/material report + --table + --fixtures)
 public/assets/  room/ tank/ hardscape/ plants/ creatures/  3d/tank_spike/ (GLBs)
@@ -402,8 +477,663 @@ Companion docs to keep current:
 
 ---
 
-## Current Status — 2026-07-02
+## Current Status — 2026-07-05
 
+- ✅ **MAIN MENU — THE ATRIUM (v23)** — user correction: the single source
+  of truth is `Designs/Main_Menu/…12_25_17 AM.png` (a circular ATRIUM), and
+  the v21 CSS-3D rectangular room was the wrong composition (built from a
+  different board). Approach changed (user-approved, ADR in DECISIONS.md):
+  a **rendered atrium BACKDROP + real UI overlay** instead of hand-drawing
+  the room (which read flat 3×). The plate was **generated with gpt-image-1**
+  to match the reference (a UI-free art asset, NOT the reference file;
+  2 candidates ~$0.34, logged) → `public/assets/ui/hub/eco_center_atrium.jpg`.
+  `src/ui/homeHub.ts` fully rebuilt (1629 → ~640 lines; CSS-3D scene deleted;
+  HomeHub class API + HubMeta + app.ts UNCHANGED): backdrop `<img>` (soft
+  pointer parallax, reduced-motion aware) + vignette + 5 clickable habitat
+  HOTSPOTS with signage aligned to the painted displays (Desert Vivarium →
+  gecko · Freshwater Aquarium → fish · Rainforest Paludarium → frog · Research
+  Desk → Care Guide · Restoration Hub → locked modal) + all live UI (top
+  ribbon Eco Points/Day-Time/Restoration+View, brand+Continue, live Current
+  Habitats, daily-care card from real reminders, 5-door dock, footer). Matches
+  the reference: domed skylight+vines, central droplet-in-golden-halo emblem
+  on the stone pond, habitat windows in curved wood, warm dusk mood, cozy
+  foreground. Drive **31/31** (5 hotspots + Continue + a row enter the right
+  habitats; 5 dock doors + Research Desk + View All open their screens;
+  restoration modal ×2 close paths; no overflow + signs on-screen + backdrop
+  decoded at 1920/1600/1366; live scores 95/93/71 + a real reminder shown) ·
+  **0 console errors/warnings/404s**. Gates: typecheck 0 · 585/585 · build 0.
+  Screenshots `docs/production/screenshots/main_menu_atrium/`. Known minor
+  gaps: no restoration mini-thumbnail, emblem lacks a small leaf, highlight
+  ring a touch larger than the painted frame.
+- ✅ **FROG PROCEDURAL ANIMATIONS + FROG ANIMATION LAB (v22)** — the
+  commissioned frog made as alive as its basic rig honestly allows, plus a
+  dev bench to see it all. **Rig measured first** (report in
+  `docs/CLAUDE_HANDOFF.md` §v22): 83 skin-bound bones, ONE baked clip
+  ("Animation" breathing idle), NO eyelids/jaw/tongue/throat bones, no
+  morph targets; the 24 hind toe-fan bones are body-parented (caps leg
+  extension); glTF strips Rigify constraints → the skeleton is SEVERAL
+  independent top-level subtrees. **Pure map**
+  `src/data/creatures/frogAnimationMap.ts` (+9 tests → **585**): 35
+  behavior states × { preferred real-clip names (Fiverr deliverables,
+  auto-win when present), procedural fallback, requiredForRelease, honest
+  note } + `FROG_PROCEDURAL_SPECS` + poop's waste-spawn EVENT marker
+  (waste spawning stays game logic) — resolves today to 1 glb / 23
+  procedural / 11 loudly-missing (blink, tongue set, climbs, big jump —
+  never faked, never hidden). **Clips**: `FrogProceduralClips.ts` captures
+  the idle@t=0 CROUCH as the per-bone base pose (bind pose = upright
+  ghost) and samples 23 authored offset programs into real
+  `THREE.AnimationClip`s @30 Hz (+base tracks on untouched bones);
+  whole-body ops drive ALL top subtrees rigidly (`BODY` = spin + orbit —
+  driving only `root` stretched the frog like taffy; caught via frozen-
+  pose audit, fixed, re-proven). `FrogClipPlayer.ts`: one mixer for GLB +
+  procedural (crossfade, loop override, 0.05–4× speed, `seek(name,t01)`
+  scrub, reset-to-crouch). **Frog Animation Lab** `ThreeFrogLabScene.ts`
+  (**`?habitat=froglab`** / `?debugFrog=1`, dev-only, never persisted; 🎬
+  button in the `?dev=1` switcher): magnified frog on a ringed stage
+  (rings = small/medium hop reach), grouped 35-state list with
+  GLB/Procedural/**Missing — needs Fiverr** badges + per-state play,
+  prev/next/replay/reset transport, loop + speed, missing box, rig notes,
+  copy-report; QA hooks `__frogLab.*`. Live-proven: probe **26/26** (hop
+  root-motion: lift 0.012→0.167 m, forward exactly 1.4 body lengths,
+  landing Δy 0.0000, once-clips clamp; loop/speed/reset via REAL UI
+  clicks) + regression **14/14** (gecko main/terrain/decorate bodyPen 0 ·
+  Emerald Hollow · aquarium 37 residents · Creature Lab) with **0 console
+  errors/warnings/404s**. Gates: typecheck 0 · **585/585** · build 0.
+  Screenshots `screenshots/session_checks/froglab_*`; Fiverr brief (rig
+  fixes: eyelids/jaw+tongue/throat/toe-fan re-parent; clip names) in
+  `docs/CLAUDE_HANDOFF.md`. Paludarium hopper + gecko controllers
+  untouched.
+- ✅ **MAIN MENU 3D — THE TRUE-PERSPECTIVE LODGE (v21)** — direct user
+  request after v20.1 ("still a flat CSS/DOM wall … I want a true
+  3D/isometric-looking Eco-Center hub"): the hub COMPOSITION was rebuilt as
+  a genuine one-point-perspective room in **CSS 3D** (`perspective` +
+  `preserve-3d` planes — Option B; Three.js stays habitat-only, ADR in
+  DECISIONS.md), matched to `Designs/Main_Menu/…12_25_29 AM.png`. A real
+  floor recedes to a back wall (planks converge to the vanishing point),
+  raftered ceiling, receding side walls; the vivarium + aquarium are
+  VOLUMETRIC glass boxes on wooden cabinet boxes (render-plate front face,
+  hue-lit translucent glass end cap, lit lid, mini-tank rack + brass plaque)
+  along the left wall; the rainforest column stands proud of the back wall
+  beside a REAL doorway gap opening onto a dusk-lake plane 60u deeper (the
+  view through the door parallaxes) and the teal-seeping restoration drape;
+  photo wall (live captures) / care library / supply shelves recede down the
+  right wall; pendant lanterns hang INTO the room pooling foreshortened
+  light ellipses on the floor plane; a PINNED flat foreground (couch +
+  fern sprites) crops the frame over the pointer-parallax camera
+  (perspective-origin ease, reduced-motion aware). Hotspot chips are
+  billboarded pill signs floating above their feature. Geometry is
+  u-unit-relative (`layoutRoom()` re-projects on show/resize — identical at
+  every 16:9 size). All in `src/ui/homeHub.ts`; HomeHub API/app.ts/registry
+  untouched. TWO Chromium 3D rules learned + encoded: placed planes must
+  never cross (nondeterministic plane-splitting → foreground props are flat
+  overlay; glows live coplanar on their plane) and decorative faces are
+  pointer-events:none (3D hit test can return a farther face). Drive
+  **46/46** (structure, hover, 5 doors, screen chips, restoration modal ×3
+  close paths, 3 habitat chips + tank-face + 3 rows + Continue-memory
+  entries, View All, overflow/decode at 1920/1600/1366) with **0 console
+  errors/warnings/404s**; gates typecheck 0 · 576/576 · build 0.
+  Screenshots: `docs/production/screenshots/main_menu_3d_hub/`. Known
+  limits: static lighting, CSS/sprite furniture (painted per-plane art =
+  upgrade path), mini-tanks stay set dressing, isometric cutaway board =
+  possible future camera.
+- ✅ **MAIN MENU V2 — THE CINEMATIC LODGE PASS (v20.1)** — direct user
+  request ("too flat, too prototype-like, too much like a drawn UI wall"):
+  a full visual-quality pass on `src/ui/homeHub.ts` ONLY (CSS + scene DOM —
+  class API, `ecoCenter.ts` registry, navigation and all sibling screens
+  untouched). Depth: real rafter CEILING (warm-lit boards/joists/cross
+  beam) replaces the clerestory stripe; two MULLIONED DUSK WINDOWS (stars,
+  one moon, tree line, glass sheen) behind the tank wall; room base ~35%
+  darker so light sources win; full-scene VIGNETTE + real fernbush-sprite
+  FOREGROUND FOLIAGE (bottom corners + shelf-top pots); pendants got
+  chains/woven shades/bulbs. Tank physicality: per-habitat light hue
+  (amber/aqua/green) drives wall wash + inner glass rim-light + dual sheen
+  + rack UNDERGLOW + floor SPILL; the empty cabinets became racks of six
+  glowing MINI-TANKS (lamp strip + substrate + plant silhouettes); teal
+  SEEP behind the restoration drape; library desk lamp (seated dome) +
+  chair + leaning books; glinting jars + a lit storm lantern; brass
+  picture light + paper-blank pins on the photo board. Hotspots are
+  in-world PLAQUES: anchored just above each feature on short soft stems
+  (beam cords deleted), green-badge cream icons, small-caps titles, green
+  hover glow. UI: deeper panel glass, forest-green Continue (not neon),
+  dock pressed/hover states, 1366 fixes (photo note wraps, plaques don't
+  truncate). Final drive **58/58** (v20's 54 checks + windows/minis/
+  vignette/foliage) with **0 console errors/warnings/404s**; screenshots
+  `screenshots/main_menu_v2/` (1920/1600/1366 + hover + modal). Future
+  art slot documented in `docs/CLAUDE_HANDOFF.md`: a painted 16:9 no-UI
+  background plate can replace the CSS envelope 1:1. Known limits: still
+  flat-wall (isometric board = future), static lighting, mini-tanks are
+  set dressing (only the three real habitats are interactive).
+- ✅ **THE ECO-CENTER RESEARCH LODGE — MAIN MENU REPLACED (v20)** — the home
+  hub rebuilt from the seven `Designs/Main_Menu/` boards (synthesis, no
+  board pasted): a SELF-DRAWN dusk lodge (CSS wall/clerestory/beams/lamps/
+  floor/lounge, dust motes, reduced-motion aware) whose furniture is real
+  game content — the three live tank render plates in contrast-dark
+  cabinets, a Photo Wall pinning the player's REAL album captures (honest
+  empty frames + note on fresh profiles), Supply Corner shelves stocked
+  with real decor renders, and a draped locked Restoration Wing. SEVEN
+  labeled room sections from the new pure registry `src/data/ecoCenter.ts`
+  (+10 tests; typed actions habitat/screen/locked): Vivarium Wing /
+  Aquarium Wall / Rainforest Room enter the real habitats, Supply Corner →
+  Shop, Care Library → Guide, Photo Wall → Album, Restoration Wing → a
+  polished locked-wing modal (honest 3-of-4 bays = 75%; "Cloudridge
+  Wetlands" = the next wing's project name). Habitat chips hang from beam
+  cords with stems to their tanks (board #2's sign language, staggered
+  Restoration sign); units are big click targets with tooltips. Overlay UI:
+  brand panel (droplet mark + serif wordmark + "Welcome back, Keeper." +
+  ripple flavor + Continue w/ last-habitat subtitle), Current Habitats
+  panel (live score bars, click-to-enter, View All), resources (leaves /
+  water / Keeper-level chip w/ real reputation XP bar / sun-moon day
+  clock), Restoration Progress card (≥1560px), Daily Care card from REAL
+  deriveReminders (+ per-tank alert dots), 5-door dock, day-part footer +
+  motto, 0.4s fade-in. Stage-relative geometry keeps lamps/stems/furniture
+  aligned at every width; compact chip tier ≤1560px. HomeHub class API +
+  HubMeta unchanged → app.ts untouched. Gates: typecheck 0 · **576/576
+  tests** (ecocenter 10 new) · build 0 · Playwright drive **54/54** (logo/
+  chips/units/art-decode/modal×2 close paths/all doors in-and-back/habitat
+  entry + home + Continue memory/photo-board layering/1920+1600+1366
+  overflow & collision) with **0 console errors/warnings/404s**.
+  Screenshots: `screenshots/main_menu_implementation/`. Known v1 limits:
+  restoration wing is a labeled locked door (no gameplay behind it yet),
+  static scene lighting, flat-wall composition (isometric board #6 =
+  future pass).
+- ✅ **HONEST RECENCY + BUY BACK + ALBUM PASS (v19.2)** — three user
+  requests: (1) FIXED the Recent-sort bug — purchases/buy-backs stamp a
+  persisted acquisition time (`glasswater.decor.acquired.v1`) and the
+  Inventory's Recent sort uses it, so a fresh Shop purchase is the first
+  card (drive-proven). (2) NEW **Buy Back**: every sale (single + bulk)
+  lands in a capped newest-first list (`glasswater.decor.buyback.v1`);
+  an Inventory rail panel re-buys one click at EXACTLY the refunded
+  price (net-zero undo, no exploit), then bumps it back to the top of
+  Recent. Pure `pushBuyback`/`takeBuyback` (+4 tests). (3) **Photo Album
+  click-everything pass** over real captures — all pills/collections/
+  lightbox actions/cover pick/slideshows/exports/Esc chains verified;
+  Favorites + Showcase empty states redesigned (amber icon chip + serif
+  title, no raw emoji). Gates: typecheck 0 · **566/566 tests** · build 0
+  · **31/31 combined drive** with the economy proven to the leaf
+  (12540→12430→12496→12430) · 0 console errors/warnings/404s.
+- ✅ **INVENTORY PERFECTION (v19.1)** — user-requested follow-up: the
+  Inventory works end-to-end with zero dead ends. FIXED the fresh-keeper
+  bug (in-use counts fell back to nothing before a habitat's first save —
+  `app.decorInUse()` now counts the authored default layouts, so the
+  Decorations tab is never empty); feeder packs use the REAL food photos
+  (`SUPPLY_ART` shared by Shop + Inventory; fish foods stay honest
+  glyphs); procedural substrates render their real `terrainSwatchUrl`
+  swatches; reference **Rotate** button = a real 4-frame turntable (yaw
+  in ThumbVariant, 116 pre-rendered 512² thumbs, tests require every
+  frame on disk); reference **Edit** button = deep link into Decorate
+  mode unarmed (placed pieces only); **Bulk Actions** = a real menu
+  (pure `sellAllSpares` — drive-proven exact 60% refunds — + Shop jump);
+  tools/supplements detail panels gained real "Use it in <habitat>" /
+  "Dust at the next feeding" actions; chips only where counts exist.
+  RELEASE POLISH (user feedback): the duplicate top category pills are
+  GONE (categories live only in the left rail; the top row is a slim
+  toolbar: active category + count · Sort · grid/list), Bulk Actions
+  expands INLINE inside the totals panel (the floating popover clipped
+  against the rail scroll and read as broken), and the header carries
+  LIVE wallet pills (🍃 leaves + ★ reputation — a sale updates them
+  instantly; `InventoryCallbacks.resources()`). Gates: typecheck 0 ·
+  **561/561 tests** · build 0 · **55/55 click-everything release drive**
+  + the earlier 22/22, 0 console errors/warnings/404s. Screenshot:
+  `screenshots/final_ui_pass/inventory_perfected.png`.
+- ✅ **CARE GUIDE PERFECTION + BACK PILLS + PHOTO-EXIT (v19)** — the
+  user-request polish pass. (1) **Universal back pill**: new
+  `gwBackPill()`/`.gw-backpill` in gwTheme, mounted top-left in the header
+  of ALL six door screens (Care Guide · Habitats · Supply Shop — which had
+  NO close control; `ShopCallbacks.close` added — · Inventory · Photo
+  Album · Settings); footer backs kept. (2) **Photo Mode exits itself**
+  after the shutter (`capturePhoto` escapes whichever machine is in
+  "photo"; the flash covers the camera re-anchor). (3) **Care Guide
+  rebuilt as a real game encyclopedia**: 16 REAL in-game captures (new
+  `__habitat3d.setView` QA hook + scratchpad capture script — HUD hidden,
+  camera placed per shot) give every tab hero (Overview = the hub display
+  wall, Feeding = a staged live cricket hunt, Shedding = the humid hide…)
+  and all 8 Habitat Setup essentials cards actual game imagery with 📷
+  caption chips; every "Learn more" rewritten as complete plain-language,
+  species-checked sentences (prey-narrower-than-the-eyes rule, gut-loading,
+  adult-monthly sheds — fixed from "2–4 weeks" —, tail autotomy in cards +
+  a new FAQ entry, MBD, urate); cards rebuilt to the reference side-by-side
+  tile layout with the WHOLE card clickable (cursor:pointer everywhere);
+  the "Track Your Knowledge" quiz CTA is REMOVED, replaced by a rotating
+  **Did You Know?** field note (8 true facts, one per chapter view); a
+  "Leopard Gecko at a Glance" panel landed on Behavior. Tests enforce the
+  new contracts (art exists on disk, full-sentence notes, facts, autotomy
+  FAQ): careguide 15→20. Gates: typecheck 0 · **555/555 tests** · build 0
+  · **31/31 live drive** (back pills navigate on all six screens, shutter
+  → gecko-main, no quiz, imagery decodes, fact rotates, Esc chains, no
+  overflow at 1920/1600/1366) with **0 console errors/warnings**.
+  Screenshots: `screenshots/care_guide_implementation/guide_*`. Known:
+  guide checklists remain static copy (roadmap); captures show the current
+  save's decor — rerun the capture script after big redecorations.
+- ✅ **THE FINAL-UI PASS: SHOP · INVENTORY · ALBUM · SETTINGS · NEW HOME
+  HUB (v18)** — the whole remaining `Designs/` batch applied in one
+  autonomous session, plus a home-hub redesign and a new economy loop.
+  **Owned decor** (`src/game/decorInventory.ts`, pure + persisted): the
+  Supply Shop sells real catalog pieces into an owned inventory;
+  Decorate-mode placement CONSUMES an owned piece before charging leaves
+  (single guarded change at the app's placement-economy seam); the
+  Inventory sells spares back at 60%; "in use" counts read from the real
+  habitat saves. **Supply Shop** (`src/data/shopCatalog.ts` +
+  `src/ui/shopScreen.ts` — Designs/Supply_Shop): serif header, Eco-Keeper
+  card, 7 category pills, FEATURED BUNDLES priced as Σ(real contents)
+  minus the stated discount (hero over the real Sunstone render, View
+  Bundle modal), a 5-per-row grid of every real good with studio-render
+  GLB thumbnails (29 extracted at 512² to
+  `public/assets/ui/decor_thumbs/` via ThreeThumbnails' new size param +
+  placeholderThumbnail), a live cart (merge/steppers/savings line) and a
+  checkout that genuinely delivers — live-proven −550 leaves, +18
+  crickets, +6 mealworms, 5 pieces owned. **Inventory**
+  (`src/data/inventoryPage.ts` + `src/ui/inventoryScreen.ts` —
+  Designs/Inventory_Screen): 8 tabs, summary rail, EXACTLY-5-per-row grid
+  (×N + "In habitat" chips), detail panel with derived rarity/size/biome
+  words + habitat-effect meters + tips; **Place in Habitat deep-links
+  into Decorate with the piece armed** (HabitatEditorPanel.armExternal +
+  a bounded retry through the loading pipeline), Sell refunds 60%
+  (live-proven +42), supplies jump to the Shop, substrates to Terrain
+  mode. **Photo Album** (`src/data/photoAlbum.ts` +
+  `src/ui/photoAlbumScreen.ts`, STANDALONE overlay so in-habitat 🖼
+  buttons return to the habitat — replaces AlbumOverlay): five filter
+  pills (Favorites/Species real; Seasonal an honest toast; Showcase =
+  favorites + covers), collection cards for the real three habitats with
+  real-capture covers, counted sidebar stats, cover click-to-pick, REAL
+  slideshow, export-as-download, lightbox with two-step delete; the album
+  store grew favorites/covers sidecars. **Settings**
+  (`src/data/settingsSchema.ts` + `src/ui/settingsScreen.ts`, STANDALONE
+  — replaces SettingsModal everywhere): the reference's six tabs;
+  ~16 LIVE controls (volume/mute→sfx, °F/°C, 12/24h via the new
+  fmtClockPref seam, UI+text scale→real menu zoom, render
+  resolution+quality→renderer pixel-ratio, Max FPS→real frame cap,
+  camera sensitivity/invert→OrbitControls via setControlTuning, autosave
+  interval, hints gate, reminders gate, reduced motion, high contrast,
+  fullscreen, test chime, Save Now, the exact two-step Reset); every
+  not-yet-real row is an honest info fact or a future row that persists
+  its choice (prefs v2 fields, clamp-healed, tested); right sidebar has a
+  real vivarium preview + LIVE fps meter + Auto-Detect; real persisted
+  Playtime chip. **Home hub v2**: the flat cards became a physical
+  DISPLAY WALL — the three real tank plates as lit glass displays (lamp
+  cones, sheen, walnut stands + one shelf, reflections, brass plaques,
+  live score chips + words, reminder alert dots) plus a draped
+  "in restoration" bay, a real TODAY'S CARE strip (deriveReminders,
+  reminder-pref aware), an honest 3-of-4 restoration bar, and the doors
+  dock with icon chips; class API + HubMeta unchanged. Shared: 14 new
+  gwIcons; capturePhoto QA hook; hubScreens hosts only self-chromed
+  screens (old v12 shop/inventory builders + their CSS removed). Gates:
+  typecheck EXIT 0 · **550/550 tests** (decorinventory 6, shoppage 9,
+  inventorypage 13, photoalbum 9, settingspage 9) · production build
+  EXIT 0 · final Playwright drive **78/78** (+31-check smoke) with **0
+  console errors/warnings**: exact cart/checkout math, sell refund,
+  Decorate deep-link armed, favorites/slideshow/Esc chains, prefs
+  application incl. real zoom + body classes + reset semantics, Care
+  Guide/Habitats regressions, no horizontal overflow at 1920/1600/1366.
+  Screenshots: `docs/production/screenshots/final_ui_pass/`. Known v1
+  limits: supply packs use glyph tiles (decor uses real renders), Bulk
+  Actions/key-rebinding/music/shadows are honest future rows, Red
+  Succulent's tint reads subtle (faithful to in-tank), fish tank has no
+  Decorate mode yet so Place-in-Habitat targets the vivarium.
+- ✅ **HABITATS PAGE REFERENCE-MATCH SCREEN (v17)** — the hub gained a
+  **Habitats door** opening the management page from
+  `Designs/Habitats/Screenshot 2026-07-04 at 12.52.35 AM.png`, built from
+  real components with REAL data wherever the mockup showed fiction (ADR):
+  **data layer** `src/data/habitats.ts` (pure, 16 tests) = card registry for
+  the player's real three habitats (Sunstone Desert · Sapphire Stream ·
+  Emerald Hollow, real in-game render art under
+  `public/assets/ui/habitats/`), TEMPLATE_IDEAS (the reference's four
+  future builds as honest "Concept" tiles), `scoreWord` (HUD thresholds),
+  `keeperLevel` (250★/level presentation of real reputation), `bumpStreak`
+  (persisted daily care streak), `deriveReminders` (urgency-ordered from
+  real signals: hunger/cleanliness/frog humidity+hydration/aquarium
+  nitrate), `visitLabel`/`sortByRecent`; **screen**
+  `src/ui/habitatsScreen.ts` (hosted by HubScreens' "habitats" case, host
+  chrome hidden, `--hb-display` serif scoped like the Care Guide) = serif
+  header + FEATURED hero card (the SELECTED habitat: live score + word,
+  reference blurb, Continue Caring really enters, View Details opens a
+  detail overlay with live signal boxes, favorite star) + three scroll-snap
+  card rows with paging arrows + honest "View All (N)" counts + dashed
+  Create New Habitat card (future-update toast) + right sidebar (Eco-Keeper
+  level/XP bar, Habitat Insights: real streak / live avg cleanliness / real
+  album photo count, Reminders with tone dots + View All + "All caught up"
+  empty state, Supply Shop promo that swaps the host to the shop) + the
+  batch's status footer. Esc chain: detail → expanded reminders → hub.
+  Selection defaults to the most recently visited habitat; favorites
+  persist (`gw_hb_favs`). **Real bookkeeping**: `enterHabitat` stamps
+  last-visit timestamps + the `gw_care_streak` daily streak; the
+  lizard/frog HubMeta stash grew cleanliness/hunger/humidity/hydration
+  (old stashes heal to null → honest "—"/"Not visited yet"); the aquarium
+  reads live from the sim. New gwIcons bell/flame/plus/eye/frog. Verified
+  with a local Playwright drive: **59/59 checks** (layout contract, real
+  scores 95/93/71 after real visits, a REAL derived reminder "Check
+  humidity · Emerald Hollow", card-select re-featuring, favorite persist,
+  honest Create/template toasts, Visit Shop swap, Continue Caring entry,
+  Esc chains, no horizontal overflow at 1920/1600/1366, art decode
+  guards, Care Guide/Inventory regression) with **0 console
+  errors/warnings**. Gates: typecheck EXIT 0 · **504/504 tests**
+  (habitatspage 16 new) · production build EXIT 0. Screenshots:
+  `docs/production/screenshots/habitats_implementation/`. Known v1
+  limits: Recently Visited repeats the same three tanks (only three
+  exist), Create New Habitat is a placeholder, and the art plates are
+  regenerable canvas captures (refresh them as the tanks get richer).
+- ✅ **CARE GUIDE REFERENCE-MATCH SCREEN (v16)** — the hub's Care Guide door
+  now opens the final-design care encyclopedia
+  (`Designs/Care_Guide/Screenshot 2026-07-03 at 11.33.51 PM.png`), built
+  from real components over the cozy room. **Data-driven chapters**
+  (`src/data/careGuide.ts`, pure + 15 tests): EIGHT tabs (Overview /
+  Feeding / Habitat Setup / Heating & Lighting / Health / Behavior /
+  Shedding / FAQ), each a hero + info strip + expandable "Learn more" topic
+  cards + per-tab Quick Reference + checklist; Habitat Setup is
+  reference-exact (5-item strip, 8 essentials cards, 8-item checklist with
+  only "Monitor temps & humidity" open, humidity dial, lighting notes).
+  Temperatures live as °C bands DERIVED from `LEOPARD_GECKO.ideal`,
+  formatted via prefs (°F default honored); feeder cards derive from the
+  real `FOOD_TYPES` table; the old guide's nitrogen-cycle explainer +
+  species encyclopedia moved into Overview (nothing lost — the Shop's
+  "browse the encyclopedia" pointer stays true). **Screen**
+  (`src/ui/careGuide.ts`, hosted by HubScreens' guide case with host
+  chrome hidden): serif display headings scoped as `--cg-display` (this
+  design batch pairs serif display over sans body), hero art = real
+  in-game vivarium crop (`public/assets/ui/care_guide/
+  habitat_setup_hero.jpg`), 4×2 essentials grid at 1920, FAQ accordion,
+  Track Your Knowledge CTA (honest "quizzes arrive with the Research
+  update" note), live status footer (Eco Points = leaves per the
+  Supply_Shop reference's vocabulary, Habitats "3 restored", Reputation,
+  In-Game Time, ‹ Back, Visit FAQ → FAQ tab). NO left nav — the whole new
+  Designs batch is full-bleed screens with hub-door navigation. New
+  gwIcons: book/box/snow/star/cave/branch/gauge/clock. **Esc chain**: first
+  Esc collapses open details, second closes to the hub. Verified with a
+  LOCAL Playwright drive (the MCP was down; `playwright` is now a dev dep):
+  **38/38 checks** — open-from-hub, tab switching, expand/Show less, quiz
+  honesty, Visit FAQ, footer Back, Shop/Inventory regression, and no
+  horizontal overflow at 1920×1080 / 1600×900 / 1366×768 — with **0
+  console errors/warnings**. Gates: typecheck EXIT 0 · **488/488 tests**
+  (careguide 15 new) · production build EXIT 0. Screenshots:
+  `docs/production/screenshots/care_guide_implementation/s1…s6`. Known v1
+  limits: checklist states are static copy (live-audit wiring is a roadmap
+  item), the quiz is a CTA placeholder, and the other new Designs screens
+  (Supply Shop / Inventory / Photo Album / Settings / Habitats) are not
+  yet applied.
+- ✅ **RAINFOREST PALUDARIUM "EMERALD HOLLOW" — THE THIRD PLAYER HABITAT
+  (v15)** — the colorful frog is PROMOTED from the dev Lab into its own
+  planted humid tank, and the hub carries THREE live habitat cards.
+  **Data** (`src/habitats/frog/` — pure, tested): `FrogHabitatData.ts`
+  (tall 60×45×60-class tank at the shared world scale `FROG_WORLD_SCALE`
+  3.3; EnclosureSpec-derived camera/walk/placement; authored layout of
+  catalog PlacedObjects — climbing root, slim elevated perch branch, mossy
+  rock cluster + cool hide (jungle `tint`s re-stamped after rehydrate via
+  `applyFrogTints`), deep-green grass + hanging vines; mister + canopy-light
+  equipment; warm 27° / cool 23° / humid / feeding zones; `FROG_POND` ellipse
+  + `insidePond`; `paintFrogFloor` pre-paints REAL leaf-litter drifts +
+  bioactive pockets into the persisted HabitatMaterialMap) and
+  `FrogNeedsSystem.ts` (amphibian needs: skin-drinking HYDRATION driven by
+  humidity/misting/pond soaks at session pacing, dryness-weighted stress
+  target, dehydration health damage, `frogComfort`, and the ambient
+  `HumidityModel` — base from substrate coverage + pond bonus, mist boost
+  τ≈4 min). New `leaf_litter` terrain (11 materials; bioactive/mossy/litter
+  unlocked ONLY in `tropical_terrarium`); `AnimalNeeds.hydration?` added.
+  **Scene** (`ThreeFrogScene.ts`, deliberately leaner than the gecko
+  flagship — no editor/terrain tools in v1): reuses buildVivariumShell (new
+  `backPanel: "rainforest"` jungle-wall option — desert default untouched),
+  MaterialFloor composite (moss+litter+bioactive read as hand-laid drifts),
+  the shared decor pipeline (placeholders → real GLBs + measured
+  footprints), plus NEW procedural broadleaf/fern/moss-tuft planting, a REAL
+  pond (floor mesh scooped into a basin, teal water inside, river-stone rim)
+  the frog soaks in for hydration, misting nozzles + falling spray particles
+  + a breathing fog sheet, and live feeder CRICKETS (registry GLB at world
+  scale, wander/flee AI) the frog genuinely hunts via `ThreeFrogHopper`
+  (new `scale` + `freeSpot` collision hooks — hop landings are nudged out of
+  hard decor by a CollisionWorld compiled from the measured contours).
+  **UI**: `frogHud.ts` at the gw bar (identity card with the commissioned
+  portrait `frog_portrait_01.png`, score card, 7-stat strip incl. Humidity/
+  Hydration in °F-aware units, Feed drawer (cricket stock + portion), MIST
+  dock action, Animal Info panel with care tips), three new modes
+  (`frog-main`/`frog-feed`/`frog-info`) in the pure machine, hub card +
+  HubMeta stash, Continue/`gw_habitat` support, loading card, `?habitat=frog`
+  dev URL, `__frog` + `__app.frogMode/serveFrogFood/frogMist` QA hooks.
+  **Live-proven end-to-end**: humidity 54 "Too dry" warn → Mist → 82–92
+  "Ideal" (band 70–95) with visible spray; Release Crickets consumed REAL
+  stock 18→15 and the frog hunted one down ("snapped up a cricket", hunger
+  61→75 = the exact +14 config restore); the frog self-soaked in its pond to
+  100% hydration; click-the-frog opens its info panel (raycast vs the rigged
+  skinned mesh works); photo → album ("Colorful Frog · Emerald Hollow");
+  save/reload restores needs/position/painted floor under
+  `glasswater.habitat.emerald-hollow`; hub card shows the live 71 score;
+  gecko (score 95, bodyPen 0) + fish (37 residents) regression-clean.
+  Gates: typecheck EXIT 0 · **473/473 tests** (frogneeds 10, froghabitat 9,
+  uimode +5, terrains/creatures updated) · production build EXIT 0 · fresh
+  frog load 0 console errors/warnings. Screenshots:
+  `screenshots/session_checks/g1…g6`. **Also this session**: fixed the
+  album/settings clipped-header bug (a global legacy `.bar { height:6px }`
+  meter rule collided with the gw panels' header rows — scoped to
+  `.metric-row .bar`; this was the user's "header image isn't loading"
+  report), and fixed the dev-environment instability at the root: the repo
+  lives in iCloud-synced ~/Documents whose fsevents ghost-replays made Vite
+  phantom-restart every few seconds — `server.watch.usePolling` +
+  root-anchored ignore globs in vite.config.ts (a bare `**/assets/**` would
+  also match public/assets and break new-asset serving); 17 phantom restarts
+  before the fix, 0 after. Known v1 limits: no frog-tank Decorate/Terrain
+  editors or cleaning tools yet (dock is Feed/Mist/Info), pond is
+  fixed-position, crickets despawn only by being eaten, gauges float
+  slightly (same as gecko), and frog hop LANDINGS are collision-validated
+  but a mid-arc pass through tall decor edges is still possible.
+- ✅ **COLORFUL FROG (animal #11) — FIRST COMMISSIONED RIGGED ANIMAL +
+  FULL LIVE RE-VERIFICATION (v14)** — the freelancer frog package
+  (`3D_Assets/Red_Eyed_Green_Tree_Frog/`: .blend + GLB + 4096² texture +
+  render + 60-frame MP4) was **validated before integration** (20-check table
+  in `docs/CLAUDE_HANDOFF.md`): real Rigify skeleton (362 joints, 59 DEF),
+  one seamless 9,765-tri skinned mesh, exactly ONE baked clip (`"Animation"`
+  = 2.5 s breathing idle — keyframe-decoded to prove it; NO hop/walk/eat
+  clips, none faked), stray `Plane` mesh + 113 `WGT-*` widget nodes + 4096²
+  texture flagged. NEW reusable `tools/prep-rigged-creature.mjs` (the
+  gltf-transform CLI is broken on Node v20.6.0) builds the runtime GLB:
+  4.82 → **1.26 MB**, textures ≤1024², junk stripped, rig + clip intact →
+  `public/assets/3d/creatures/colorful_frog.glb`. **Registry**: `colorful_frog`
+  entry (Amphibian / Rainforest frog, *Agalychnis callidryas*, rare/T3/medium,
+  authored stats: humiditySensitivity 90 · drynessSensitivity 95 ·
+  playerAppeal 90; personality/habits/behaviour-states/triggers per design;
+  new `CreatureNeeds.waterAccessNeed`; `rig.clips` alias→clip-name map; NEW
+  `locked` field = "Future rainforest habitat" so it can never reach
+  player-facing spawning — gecko systems spawn by explicit id, proven).
+  **Loader**: rigged branch (skip part classification/re-pivot, keep skeleton,
+  carry clips, `SkeletonUtils.clone` per instance) + **posed-bounds
+  normalization** (the bind pose is a rig-default UPRIGHT ghost; the real
+  crouch lives in the clip — the loader now poses the mapped idle at t=0 and
+  measures the POSED skin via `SkinnedMesh.computeBoundingBox`, turning a
+  21 cm standing artifact into the true 6 cm crouched frog). **Controller**
+  `ThreeFrogHopper`: sit-and-wait (baked idle via AnimationMixer, slowed
+  mid-air), look-around before moving, chained parabolic hops (small/big from
+  `dartSpeed`), landing squash, startle-jump + flee to cover, bounds+groundY,
+  `offerFood(x,z)` hook. **Creature Lab**: pedestal #11 breathing on the
+  bench (step 0.34→0.27 so 11 fit), a live frog on the sand pad, codex card
+  shows 🔒 lock + "Asset: rigged · clips: idle ("Animation") · other motion
+  procedural", spawn buttons work; QA `__creatureLab.frogs()/frogStates()/
+  frogClips()/frogFeed(x,z)`. Live-proven: states sit→look→travel→hop cycle,
+  in-bounds tracking, frogFeed hop-to-food, clip carried through skeleton
+  clones. **Priorities 1–4 re-verified live this session (not assumed)**:
+  Decorate full mouse pass (arm `plant_succulent` → ghost follows pointer →
+  RED ring refusal at an invalid spot (no charge) → GREEN ring place, leaves
+  12540→12470 = exact price, auto-select → Remove → Undo restores (no
+  double-charge) → Snap Off→On persisted `gw_decor_snap=1` → Done exits);
+  collision honesty (cave interior pocket walkable type "hide" on the
+  measured hide floor, wall ring 5/12 probes solid, open sand free,
+  "Outside the enclosure"/"Too close to the gecko" gates); Terrain raise
+  +0.03 m live; Feeding (dropped cricket **hunted + eaten in <25 s**, bodyPen
+  0 throughout); Clean drawer (Spot Clean/Wipe Glass/Pick Up Waste/Refill
+  Water + cleanliness meter); Animal Info (Eublepharis + Hunger/Stress/
+  Comfort/Hydration + profile + tips + actions); Filters lenses live (Hide
+  Coverage/Heat/Clutter); Esc chains exact; placed decor + snap persist
+  through reload (save `glasswater.habitat.sunstone-desert`); fish habitat
+  regression (33 registry creatures + HUD, 0 errors). Gates: typecheck EXIT 0
+  · **447/447 tests** (creatures 15→21: locked/no-fake-clips/GLB-on-disk/
+  authored numbers/behaviour-set) · production build EXIT 0 · fresh-load
+  console **0 errors/0 warnings** (lab + lizard + fish). Screenshots:
+  `screenshots/session_checks/f1…f6`. Env notes: Node v20.6.0 flaky under
+  load (tinypool crashes, gltf-transform CLI dead — LTS upgrade recommended);
+  Vite phantom-restarts killed two Playwright flows mid-session (recovered by
+  reload; server restarted clean). Session log: `docs/CLAUDE_HANDOFF.md`.
+- ✅ **DECORATE MODE v2: FIVE-CATEGORY HABITAT BUILDER + DECOR CATALOG v2
+  (v13)** — Decorate is a real habitat-building editor at the Terrain/Filters
+  polish bar, fully separate from Terrain. **Catalog**
+  (`src/habitats/HabitatBuilder.ts` rebuilt): 32 placeables in exactly five
+  player categories — Plants · Rocks · Caves & Hides · Utilities · Decor
+  (`DECOR_SECTIONS`) — 27 live + 5 honestly LOCKED cards ("Art in production" /
+  "Future humid habitat": Rock Arch, Arch Hide, Cork Hide, Skull Accent,
+  Tropical Fern). `PlaceableDef` grew card copy (`desc`/`tags`/`tip`), a 9-axis
+  0..10 `effects` block (comfort/hideCover/heat/humidity/basking/security/
+  natural/enrichment/cleanup — `DECOR_EFFECT_KEYS` drives the detail-card
+  meters), per-axis `defaultScale` + material `tint` (VARIANTS: one rock GLB →
+  Flat Ledge / Sandstone Boulder / Cave Stone / Pebble Cluster / Slate Slab /
+  Desert Ridge / Small Stones; one cave GLB → six distinct hides; tint =
+  cloned-material lerp so the shared decor cache never repaints siblings;
+  thumbnails keyed per file+tint+scale so every variant card shows ITS look),
+  and `locked`. NEW procedural placeholder shapes (grass clump,
+  string-of-pearls vine, desert sign, thermo-hygro gauge, stone cairn, wood
+  platform). Legacy defIds ALL preserved + relabeled (saves self-heal
+  `asset`+`tint` via rehydrate). All 32 priced in `DECOR_PRICES`; **duplicates
+  now charge like placements** (closed a free-decor exploit found live).
+  **Editor UX** (`habitatEditor.ts` rebuilt + `ThreeHabitatEditor`): left BUILD
+  TOOLS rail (Place / Move / Rotate / Scale / Duplicate / Remove / **Snap
+  On·Off** + Advanced/Undo/Redo/Collide/Focus/Camera minis), 5 category tabs +
+  cross-category search, cards with variant GLB thumbs + tag/price/lock
+  overlay (locked cards preview in the detail card but never arm), right
+  DETAIL CARD (desc, tag+behaviour pills, HABITAT EFFECTS meters, 💡 placement
+  tip, interaction segment + transform sliders for a selection — max-height
+  clamped CLEAR of the tray so ✓ Done always stays clickable). **Snap** = 10 cm
+  grid + 15° rotation + 0.25× scale gizmo snaps, persisted (`gw_decor_snap`),
+  Ctrl inverts momentarily. **Placement preview**: ghost tinted
+  green/amber/red + a terrain-draped double RING + soft ground shadow at the
+  drop point; red reasons (bounds/overlap/steep/gecko/support/economy) + a
+  soft amber PATHING advisory ("Tight fit…" — ring-samples the collision
+  world; only fires in genuinely walled pockets). **Terrain-true placement**:
+  floor props seat on the SCULPTED sand (`groundHeightAt`) at place/move/
+  snap-to-floor (the ghost previews the exact seated Y; steep dune flanks
+  refuse honestly with "The ground is too steep here"); reset-transform
+  returns variants to their catalog defaultScale, not raw 1×. Live-proven
+  end-to-end with real mouse input: placed from every category, axis-locked
+  gizmo move (−0.43 m on X only), gizmo ring rotate + slider to 230°, scale
+  1.9×, duplicate (charged −210 🍃), verified delete + Undo restore, snap on:
+  hover (0.047,−0.463) → ghost AND save land (0.0,−0.5); everything persists
+  through reload incl. tint + seat Y. **Collision**: marching-squares contours
+  hug every variant at per-axis scale (`SurfaceRef` carries sx/sy/sz),
+  soft/step-over pieces never phantom-block (`blockedAt` false over Small
+  Stones/Pebble Cluster/plants), all hide variants pass the body-fit bar
+  (`hideFit` ≥ 0.155 incl. a 1.9×-scaled burrow), and the gecko HUNTED a
+  cricket across the fully decorated floor in 11 s (bodyPen 0 throughout,
+  never flagged unreachable). **Filters integration proven numerically**: Hide
+  Coverage 96 → 100 on placing a third hide; Clutter honestly reads the
+  crowded floor ("33 · Needs Work"); the habitat score sums every new piece
+  live. Terrain/Filters regression: real brush stroke raised sand +0.031 m,
+  all 6 sculpt tools + lens readouts + Esc chains intact. **Priorities 2–4
+  audited complete** (Feeding: uneaten feeders already despawn — "burrowed
+  away"; Clean: all 5 tools live; Animal Info: all v11 sections + sex + live
+  metrics — smoke-tested this session). typecheck + build + **441 tests** (new
+  `tests/decorcatalog.test.ts` — 15: ids/sections/copy/effects/prices/locked/
+  asset-files-on-disk/variant machinery/hide-fit bar). Playwright-verified
+  with **0 console errors + 0 warnings** on fresh loads; screenshots
+  `screenshots/session_checks/d1…d8`. Session log: `docs/CLAUDE_HANDOFF.md`.
+  Known: 5 locked cards await real art; Basking Lamp Marker deliberately NOT
+  placeable (the lamp belongs to the EnclosureSpec shell); the amber pathing
+  advisory is conservative; the tool rail scrolls on short (≤900 px) viewports.
+- ✅ **ONE UNIFIED GAME: HOME HUB + PREMIUM FISH HABITAT + LEGACY RETIRED
+  (v12)** — the "three stapled games" era is over. **Navigation**: a new cozy
+  HOME HUB (`src/ui/homeHub.ts` — eco-center room backdrop, habitat cards with
+  real art + LIVE scores, Continue, Shop/Inventory/Guide/Album/Settings doors)
+  is the entry screen; both habitat HUDs carry a ⌂ home pill; the corner
+  switcher is dev-only (`?dev=1`). **Legacy retired**: the spider box and the
+  old 2D aquarium are OUT of the player UI (dev URLs `?habitat=spider` /
+  `?tank=2d` only; 2D remains the silent WebGL-failure fallback). **The fish
+  tank is a real GLASSWATER habitat** at the gecko bar: fish gw-HUD
+  (`src/ui/fishHud.ts` — identity card, Aquarium Score, 8-stat water-chemistry
+  strip, Feed/Clean/Tank-Residents dock, detailed-stats panel, honest LIVE
+  roster panel), its own pure mode machine (gwModes home="fish-main", tested),
+  REAL care driven by the deterministic nitrogen-cycle sim: feeding sprinkles
+  SINKING FOOD BITS the fish chase and eat (stock-consuming; flakes/pellets/
+  bloodworms; click the water to aim), glass-scrub + gravel-vacuum DRAG tools
+  (sparkle/puff FX + squeaks; cleanliness rises per stroke), Water Change
+  (leaves cost + fresh-water pulse), sim-driven WATER CLARITY (murky green fog
+  when filthy, clears as you care — floors keep it readable), an anchored
+  eco-center camera (photo mode frees it) and photo/album support.
+  **Fish detachment FIXED at the root** (`ThreeFusedSwimmer.ts`): the
+  part-separated swimmers (tetra/guppy/danio/oto) animated by rotating
+  hard-cut tail/head/fin meshes around hinge pivots — seams visibly OPENED at
+  swim amplitudes ("the fish falls apart"). Their parts are now BAKED into one
+  merged mesh (same `unifyToBody` as the goldfish/betta) driven by the bounded
+  travelling body-wave (head anchored hp=0, amplitude clamped, phase WRAPS —
+  structurally nothing can detach, nothing accumulates); invertebrates keep
+  the part animator (small motions read as segmentation, no seams). Soak-
+  tested: minutes of swimming + feeding darts + habitat switches + reloads,
+  all 18 wave fish finite + in-bounds + visually intact in close-ups.
+  **Toasts**: ONE top-centre host, duplicates dedupe to "×N" (live-proven
+  "Game saved. ×3"), placed to never cover docks/tabs/score (`src/ui/
+  toasts.ts`, pure queue tested); consecutive-duplicate events also dedupe in
+  the sim log. **Units**: °F DEFAULT everywhere via `src/ui/prefs.ts`
+  (fmtTemp/fmtTempRange + a prose localizer that converts "30–34°C" copy to
+  "86–93°F"; °C toggle in Settings; lizard strip/details, fish HUD, guide,
+  filter tips all flow through it; tested). **Economy v1**: consumable
+  SUPPLIES (5 feeder insects + 3 fish foods, `src/game/economy.ts`, tested) —
+  feeding BOTH habitats consumes stock (out-of-stock gates with a Shop hint),
+  the SHOP really sells packs (leaves deducted live), INVENTORY shows owned
+  stock, decor pieces cost leaves on placement (price chips on Decorate
+  cards; the ghost explains "Need N leaves"; charge on commit).
+  **Shop / Inventory / Guide are three real screens** (`src/ui/
+  hubScreens.ts`) — Guide = read-only care sheets (leo °F bands, solitary +
+  can't-swim notes) + a nitrogen-cycle explainer + the species encyclopedia.
+  **Settings modal** (`src/ui/settingsModal.ts`: volume → sfx.setVolume,
+  °F/°C, reduced motion, save now) with a TWO-STEP confirmed Reset that wipes
+  ALL save keys (world+habitats+album+stock; prefs survive; reset-pending
+  flag defeats unload re-saves) then reloads. **Loading**: a cozy "Setting up
+  <habitat>…" card (`src/ui/loadingOverlay.ts`) covers every habitat entry —
+  no empty-tank moment. **Clock**: 4× slower (`gameMinutesPerSecond` 4→1, day
+  ≈ 24 min — no more racing days). Also: `willReadFrequently` on the smudge
+  canvas (the last console warning, gone), `.gitignore` for `.agents/` +
+  `skills-lock.json` + `screenshots/session_checks/`, hub meta stash so the
+  vivarium card shows its last-known score. QA hooks: `__app.hubOpen/
+  enterHabitat/goHome/fishMode/stock/leaves/serveFishFood/applyFishCareAt/
+  cleanliness`, `__aquarium.feed/foodBits/clarity/population`. typecheck +
+  build + **426 tests** (new: toasts 6, prefs 6, economy 6, fish modes 5);
+  Playwright-verified end-to-end with **0 console errors + 0 warnings**
+  (screenshots `screenshots/session_checks/u1…u17`). Known limitations: fish
+  Decorate/aquascaping not built yet (vivarium-only), gecko hub-card art is a
+  tight head crop, hero fish labels ("Fancy Goldfish"/"Betta") are the 3D
+  spike models not sim species, spider scene untouched behind its dev URL.
+- ✅ **HANDS-ON CARE + PHOTO ALBUM + BIOLOGY PASS (v11)** — the July-2 polish
+  milestone: EVERY cleaning action is now a hands-on TOOL (no one-click
+  clear-alls): tools appear ONLY while the button is held (aim ring on hover)
+  and lock to a TERRAIN-ACCURATE pointer point (renderer `groundAt` ray-
+  marches the sculpted sand via the new `HabitatScene.surfaceYAt` — tools no
+  longer land behind the cursor on dunes); **Pick Up Waste** scoops droppings
+  one by one (`pickWasteAt`); **Refill Water** is a held POUR that visibly
+  raises a real water-surface disc in the dish (`state.waterLevel` 0..1,
+  persisted, evaporates slowly, stale = murkier; badge shows fill %);
+  Spot Clean got a sponge (the scoop moved to waste duty). Dirt slowed ~3×
+  again (ambient ~28 h, hotspots 8–10 min). Celebration sparkles are array-
+  based + ticked unconditionally (frozen-stars bug impossible). **Cinematic**
+  is a wildlife-cam: opens on the FOOD when a meal is out (~2.6 s), then
+  glides to the gecko and keeps its FACE framed (shortest-arc ease to the
+  heading's front, clear-view fallback). **Terrain paint is unmistakably
+  physical**: painted composite at 1408px + features ×1.7 + a LUMINANCE BUMP
+  map; pebble/rocky/bark/soil cells scatter real 3D stones/chips/crumbs (cap
+  340); 2 NEW materials (**Arid Soil, Bark Chips** — procedural swatches via
+  `src/ui/terrainSwatch.ts`, never 404); material heat retention now biases
+  env.baskingC (±~1°C). Editor = the reference's BLOCKY panel: joined squared
+  tabs, wider, FLUSH to the bottom (terrain mode drops the slim nav), context
+  card enriched (taller profile + live Brush/Intensity/Mode line). Filters =
+  **11 lenses** (+ **Substrate Map** — the painted material plan); heat/
+  humidity bands corrected to research (basking zone 30–34°C, ambient 30–40%;
+  profile + wellbeing + warnings aligned). **View Detailed Stats** is a full
+  premium panel (score hero + Environment / Habitat Quality / Animal
+  Wellbeing / Care & Cleanliness sections + care history + solitary note).
+  **Animal Info** adds ♀/♂ SEX (rolled once, persisted; hidden for
+  non-sexable species), SPECIES PROFILE (diet/activity/social/swim-safety
+  notes), COMPATIBILITY pills + CARE TIPS — all from researched data
+  (`docs/production/ANIMAL_BIOLOGY_RESEARCH.md`: leos are solitary — no
+  loneliness mechanic; can't swim — shallow-dish safety note). **Photo
+  Album**: Photo Mode gained a big SHUTTER (flash + chime) → JPEG thumbs
+  persist (cap 24) → 🖼 gallery overlay (grid → viewer → delete). **Unstuck
+  Animal** button (settings flyout) → `GeckoMovementController.rescue()`
+  (clear state → walk out → teleport fallback). Decorate tray restyled blocky
+  + flush-bottom; same-GLB variants renamed to read as variants ("Boulder
+  (blocks paths)", "Cool Cave Hide", "Humid Shed Hide"). Eating live prey now
+  relieves a little stress (hunts are enrichment). QA hooks:
+  `__lizard.pickWasteAt/waterFill/pourStart/pourStop/cineInfo/sparkleCount`.
+  Playwright-verified end-to-end (screenshots
+  `screenshots/session_checks/p1_*…p4_*`); 0 console errors.
 - ✅ **TERRAIN EDITOR v3: TRUE MATERIAL PAINTING + 10 LENSES (v10.4)** — the
   Paint brush is PHYSICAL: a per-cell material map
   (`src/habitats/HabitatMaterialMap.ts`, persisted) + a composite floor

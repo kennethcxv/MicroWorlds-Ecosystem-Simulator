@@ -4,6 +4,14 @@ dist
 *.local
 .DS_Store
 
+# Local agent/tooling state — machine-specific, never ship with the game.
+.agents/
+skills-lock.json
+
+# Per-session QA sweeps (regenerated every test run). Curated reference
+# screenshots (screenshots/ui_reference_match etc.) stay tracked.
+screenshots/session_checks/
+
 # Secrets — never commit. (.env.example is a safe template and is allowed.)
 .env
 .env.*

@@ -187,3 +187,93 @@ flock math 6 — all TDD'd RED→GREEN). Screenshots:
   (flee already works), shell-health simulation from water chemistry (stats
   ready), player-facing Add Species UI backed by the registry, 2D-sim
   ecosystem wiring via the `codexId` links.
+
+## 10. Animal #11 — Colorful Frog (first COMMISSIONED rigged asset, 2026-07-03)
+
+The registry's first rigged animal, from the freelancer package
+`3D_Assets/Red_Eyed_Green_Tree_Frog/` (red-eyed tree frog; source `.blend` +
+GLB + 4096² texture + render + 60-frame idle preview MP4 — originals never
+modified). Everything below was validated before integration
+(`docs/CLAUDE_HANDOFF.md` has the full 20-check table).
+
+**What the asset really is:** one seamless skinned mesh (9,765 tris) on a full
+Blender Rigify armature (362 skin joints, 59 deforming DEF bones) with exactly
+ONE baked clip — `"Animation"`, a 2.5 s breathing idle (throat/chest pulse).
+No hop/walk/eat/blink clips exist, so those motions are procedural and the
+registry maps only `rig.clips.idle`. **The bind pose is a rig default
+(upright); the real crouched pose lives entirely IN the clip** — this drove a
+loader change (below).
+
+**Runtime prep:** `tools/prep-rigged-creature.mjs` (NEW, reusable — the
+gltf-transform CLI is broken on this machine's Node v20.6.0) resizes textures
+to ≤1024², strips the stray `Plane` mesh + 113 Rigify `WGT-*` widget nodes
+(never skin joints) and writes `public/assets/3d/creatures/colorful_frog.glb`
+(4.82 → 1.26 MB, rig + clip intact).
+
+**Rigged support in the shared pipeline:**
+- `CreatureAssetConfig.rig.clips` maps behaviour alias → EXACT clip name;
+  missing aliases are never faked.
+- `ThreeCreatureLoader`: rigged models skip part classification/re-pivoting,
+  keep their skeleton, carry `AnimationClip`s on `CreatureModel`, and clone
+  per-instance via `SkeletonUtils.clone` (plain `clone()` leaves the copy's
+  skin bound to the master's bones).
+- **Posed-bounds normalization**: before measuring scale/origin the loader
+  poses the skeleton with the mapped idle at t=0 and measures the POSED skin
+  (`SkinnedMesh.computeBoundingBox`) — bind-pose boxes normalized a
+  21 cm-tall upright ghost; posed measurement yields the true 6 cm crouch.
+- `CreatureSpecies.locked` (human-readable reason) keeps species whose real
+  habitat doesn't exist yet (rainforest/paludarium) out of player-facing
+  spawning; the dev Lab still shows them with a 🔒 line + an asset-readiness
+  line ("rigged · clips: idle … other motion procedural").
+- New controller `ThreeFrogHopper`: sit-and-wait idle (mixer plays the baked
+  breathing clip; slowed hard mid-air), look-around BEFORE committing to move,
+  chained parabolic hops (small/big from registry `dartSpeed`), landing
+  squash-and-recover on the wrapper scale, startled jump away from a looming
+  threat then flight to cover, rectangle bounds + groundY seating, and an
+  `offerFood(x,z)` hook (hops over, lunges, `onEat`).
+
+**Where it lives:** dev Creature Lab only (`?habitat=creatures`) — pedestal
+#11 breathing on the bench + a live frog on the sand pad. QA:
+`__creatureLab.frogs()/frogStates()/frogClips()/frogFeed(x,z)`. Registry entry
+is data-complete for the future rainforest vivarium/paludarium (authored stat
+block: humiditySensitivity 90, drynessSensitivity 95, playerAppeal 90; needs
+incl. new `waterAccessNeed`).
+
+**Asks for the freelancer (non-blocking):** superseded by the v22 brief —
+see §11 and `docs/CLAUDE_HANDOFF.md` §"v22 Fiverr animation brief".
+
+## 11. Frog animation system + Frog Animation Lab (v22, 2026-07-05)
+
+The frog's motion story is now a three-layer system (rig report:
+`docs/CLAUDE_HANDOFF.md` §v22):
+
+- **Pure map** `src/data/creatures/frogAnimationMap.ts` — 35 behavior
+  states, each `{ preferred: [real GLB clip names], fallback: procedural
+  clip | null, requiredForRelease, note }`. Real clips ALWAYS win when the
+  asset ships them (drop a Fiverr GLB clip named e.g. `frog_tongue_catch`
+  and that state upgrades automatically); states the rig cannot support
+  (blink — no eyelids; tongue/bite/chew — no jaw or tongue; climbs; big
+  jump) have `fallback: null` and surface as **Missing — needs Fiverr**.
+  `FROG_CLIP_EVENTS` carries the poop clip's waste-spawn time — the waste
+  OBJECT is spawned by game logic, never baked into the frog.
+  Tests: `tests/froganim.test.ts`.
+- **Procedural clips** `src/render/three/creatures/FrogProceduralClips.ts`
+  — 23 real `THREE.AnimationClip`s sampled @30 Hz from authored offset
+  programs layered ON the captured crouch base pose (idle@t=0). ⚠ Rig
+  lessons encoded there: the export ships SEVERAL independent top-level
+  bone subtrees (glTF strips the Rigify constraints that glued them) — the
+  `BODY` target moves all of them rigidly (spin + orbit), because driving
+  only `root` stretches the frog apart; three.js strips dots from node
+  names (`DEF-spine.001` → `DEF-spine001`); hind toe fans are
+  body-parented, so leg angles stay small. `FrogClipPlayer.ts` plays GLB +
+  procedural clips through one mixer (crossfade, loop override, speed,
+  `seek(name, t01)` frozen scrub, reset-to-crouch).
+- **Frog Animation Lab** `src/render/three/ThreeFrogLabScene.ts` —
+  `?habitat=froglab` (alias `?debugFrog=1`; dev-only, never persisted):
+  magnified frog on a ringed stage (rings = small/medium hop reach), the
+  full grouped state list with GLB Clip / Procedural Fallback / Missing
+  badges + play buttons, prev/next/replay/reset-pose, loop + speed,
+  missing box, rig-support notes, copy-report. QA: `__frogLab.*`.
+
+The live paludarium (`ThreeFrogHopper`) is untouched in v22 — wiring its
+behavior states onto the map's clips is the follow-up in TODO_ROADMAP.

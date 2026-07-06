@@ -483,3 +483,31 @@ intact; **0 console errors/warnings**. Screenshots:
   under them (deferred: footprint-wide resample + visual re-seat).
 - Sand texture stretches slightly on very steep dune flanks (UVs are planar).
 - Terrain cells are 48×30 — very tight brushes quantise a little.
+
+## 15. v13 — Decorate Mode v2: five-category builder + Decor Catalog v2 (2026-07-03)
+
+The Decorate pass that separates decorating cleanly from Terrain and turns the
+editor into a full habitat builder. Full narrative: `docs/production/STATUS.md`
+(v13) + the ADR in `docs/decisions/DECISIONS.md`.
+
+- **Catalog** (`src/habitats/HabitatBuilder.ts`): 32 placeables in five
+  sections (`DECOR_SECTIONS` = Plants · Rocks · Caves & Hides · Utilities ·
+  Decor), 27 live + 5 locked (art pending). Defs carry `desc`/`tags`/`tip`,
+  9-axis `effects` (0..10, `DECOR_EFFECT_KEYS`), variant `defaultScale`
+  (per-axis) + `tint` (cloned-material lerp; thumbnails keyed per
+  file+tint+scale), and `locked`. `makePlaced` stamps defaultScale + tint;
+  `rehydrateLayoutAssets` heals both on load. Duplicate charges like placement.
+- **Panel** (`src/ui/habitatEditor.ts`): BUILD TOOLS rail (Place/Move/Rotate/
+  Scale/Duplicate/Remove/Snap + minis), category tabs + search, cards with
+  variant thumbs + lock overlays, right detail card (copy + effects meters +
+  tip + selection editing). Detail card max-height stays clear of the tray.
+- **Interaction** (`ThreeHabitatEditor`): snap toggle (0.1 m / 15° / 0.25×,
+  persisted `gw_decor_snap`, Ctrl inverts), green/amber/red ghost + terrain-
+  draped placement ring + soft shadow, amber `placementWarning` advisory
+  (scene ring-samples the collision world). QA: `__editorQA.ringAt/ringColor/
+  warning/snap/project`.
+- **Terrain-true placement**: `defaultPlaceY(defId, x, z)` seats floor props
+  on the sculpted sand; `moveObject`/`snapToFloor` re-seat live;
+  `resetTransform` returns to the def's defaultScale.
+- Tests: `tests/decorcatalog.test.ts` (15). Live proof: screenshots
+  `screenshots/session_checks/d1…d8`.

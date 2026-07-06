@@ -174,3 +174,50 @@ no new game systems; menu items map to existing screens (some remain stubs).
 | photo | — | — | — | — | compact |
 
 Esc always returns to gecko-main. Exactly one drawer/panel open at a time.
+
+---
+
+# DESIGN REFERENCE MAP — `Designs/Main_Menu/` (2026-07-05)
+
+> Seven boards (`ChatGPT Image Jul 5, 2026, 12_25_01…12_25_43 AM.png`) define
+> the FINAL main menu: the eco-center as a physical research lodge. The build
+> (`src/ui/homeHub.ts` + `src/data/ecoCenter.ts`, v20) is a **synthesis** —
+> no single board is copied, none is pasted as a background.
+
+| Board (by time) | What it contributed | What we skipped |
+|---|---|---|
+| `12_25_01` (great hall) | Daily Care card copy ("Great work, Keeper!"), chips ON features, Current Habitats rows w/ icon+bar | Center waterfall conservatory |
+| `12_25_09` (flat wall, numbered chips) | **PRIMARY layout**: chip row + thin stems down to features, photo wall right, desk/library center-right | Chip numbering (clutter) |
+| `12_25_17` (circular atrium) | Top resource bar trio (Eco Points / Day·time / Restoration+View), Continue in brand panel | Circular room, center fountain |
+| `12_25_23` (desk close-up) | Restoration progress bar w/ VIEW, View Habitat buttons, observation-notes mood | Desk-first camera (hides the tanks) |
+| `12_25_29` (lounge) | "ECO-CENTER RESEARCH LODGE" subtitle, keeper-level pill, footer strip (day-part · motto), Healthy status rows | 18°C weather chip (no outdoor sim) |
+| `12_25_37` (isometric cutaway) | Locked Restoration Wing w/ lock + "complete more restorations" copy | Isometric composition (future pass) |
+| `12_25_43` (grand atrium) | Featured-habitat plaque language, CONTINUE CARING prominence | Community/Map/Tasks nav (not built) |
+
+Build honesty rules: tanks = the real render plates; Photo Wall = the player's
+real captures (empty frames on fresh profiles); Supply Corner = real decor
+renders; restoration = the true 3-of-4 bays (75%); keeper level = the existing
+reputation presentation; Daily Care = live `deriveReminders`.
+
+**V2 pass (v20.1, same boards):** the cinematic qualities of `12_25_01`/
+`12_25_09` were pushed further — visible rafter ceiling, dusk windows with a
+moon behind the tank wall, walls-of-glowing-tanks (mini-tank racks under the
+three real displays), plaque-style chips tight to their features (the long
+callout stems from the first build are gone), per-habitat glow colors,
+vignette + foreground foliage. Screenshots: `screenshots/main_menu_v2/`.
+
+**V21 (superseded):** the hub was rebuilt as a TRUE CSS-3D room from
+`…12_25_29 AM.png` (the one-point-perspective board). The user then corrected
+the source of truth — see V23.
+
+**V23 (THE ATRIUM — composition source is now `12_25_17`):** the single source
+of truth for the main menu is **`ChatGPT Image Jul 5, 2026, 12_25_17 AM.png`**
+(the circular atrium). The environment is a **rendered atrium backdrop
+generated with gpt-image-1** to match that board (a UI-free art asset, NOT the
+reference file) → `public/assets/ui/hub/eco_center_atrium.jpg`, with the real
+live UI + 5 clickable habitat hotspots overlaid (`src/ui/homeHub.ts`). The
+`12_25_17` UI mapping in the table above (top resource trio, brand+Continue,
+Current Habitats, bottom dock, daily-care card, floating habitat signage) is
+the layout implemented. `12_25_29` is retired; `12_25_01`/`12_25_09` remain
+mood refs; `12_25_37` (isometric cutaway) stays a possible future camera.
+Screenshots: `screenshots/main_menu_atrium/`.
