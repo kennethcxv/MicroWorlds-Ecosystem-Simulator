@@ -1,0 +1,350 @@
+You are building a brand-new game project from scratch called GLASSWATER.
+
+IMPORTANT CONTEXT
+GLASSWATER is a 2D / 2.5D ecosystem and aquarium management sim. It should look premium, cozy, semi-realistic, and systems-deep. The main visual target is the reference image: a physical glass aquarium on a wooden stand inside a warm dim eco-center room, with dark teal management UI around it.
+
+This is NOT a 3D game. Do not use Unity, Unreal, Blender, Three.js, or a 3D scene. Build the game as a 2D / 2.5D browser game using layered art, Canvas/DOM, CSS, parallax, depth sorting, shadows, glass overlays, and UI panels.
+
+TECH STACK
+Create a new Vite + TypeScript project unless the folder already has a package.json.
+Use:
+- TypeScript
+- HTML/CSS
+- Canvas 2D for the tank simulation and layered aquarium scene
+- DOM/CSS for UI panels and buttons
+- JSON or TypeScript data files for species/items/config
+- localStorage save/load for now
+
+Do NOT use Phaser, Pixi, React, Unity, Unreal, Godot, Three.js, or external game engines unless I explicitly approve it.
+
+REFERENCE AND ASSET FOLDERS
+I have provided references and assets in this project. Use them as visual guidance and source art.
+
+Expected folders:
+- docs/reference/glasswater_mockups/
+- assets/TankView_Assets/
+
+If these exact folders do not exist, search the project for similarly named folders such as:
+- GLASSWATER_New_Project_Starter_Pack/01_reference_screens
+- GLASSWATER_New_Project_Starter_Pack/02_tankview_assets
+- GLASSWATER_New_Project_Starter_Pack/03_species_refs
+
+Use the reference images only as visual targets. Do NOT use a full reference mockup as a static screenshot background.
+
+You MAY use specific scene assets such as:
+- cozy room background plate
+- wooden stand
+- glass aquarium shell/frame
+- substrate strip
+- driftwood
+- rock clusters
+- plant clusters
+- moss/debris
+- fish/shrimp/snail sprites
+
+The result must remain a real interactive game screen.
+
+CORE GAME FANTASY
+The player restores and manages a rundown eco-center into a living gallery of tiny ecosystems. They build tanks, care for animals, balance water quality, collect species, breed rare morphs, rescue neglected animals, and grow reputation.
+
+FINAL GAME PILLARS
+1. Deep but readable ecosystem simulation
+2. Collect / breed / rarity chase
+3. Cozy rescue eco-center fantasy
+4. Beautiful 2.5D aquarium/tank management screen
+5. Data-driven content so species, plants, décor, food, equipment, and rescue cases can be added later
+
+DO NOT START WITH EVERYTHING
+Even though the final game is bigger, first build a polished vertical slice centered on the main aquarium management screen.
+
+The first deliverable must be:
+A playable, polished main Aquarium / Ecosystem screen that looks close to the main reference mockup and has real basic simulation interactions.
+
+============================================================
+VISUAL TARGET FOR FIRST SCREEN
+============================================================
+
+The main screen should look like a premium Steam management sim:
+
+1. Overall layout
+- GLASSWATER logo/name top left
+- resource counters top center/right
+- day/time and menu top right
+- large physical aquarium centered
+- left water-quality panel
+- right population/habitat info panel
+- bottom center action buttons
+- bottom left navigation buttons
+- bottom right utility buttons
+
+2. Background room
+- warm cozy eco-center / aquarium workshop
+- dark wood shelves/walls/floor
+- blurred background tanks
+- hanging lamps
+- plants
+- bottles/tools/posters
+- warm light in the room
+- background should be atmospheric and slightly subdued so the aquarium stays the star
+
+3. Aquarium object
+The aquarium must read as a physical glass tank, not a flat rectangle:
+- sits on wooden stand/table
+- visible front glass
+- visible top rim
+- bottom rim
+- side glass edges
+- water surface line near the top
+- glass highlights/reflections
+- inner shadow around tank edges
+- subtle darkened corners
+- cool underwater lighting
+
+4. Aquarium interior
+Inside the tank:
+- detailed gravel/sand substrate across the whole bottom
+- central driftwood focal structure
+- rock clusters partially buried
+- plant clusters arranged naturally, not evenly spaced
+- moss attached to wood/rocks
+- small pebbles/debris/leaf bits
+- open swimming space in upper/mid water
+- schooling fish in midwater
+- centerpiece fish mid/right
+- shrimp/snails/bottom dwellers near substrate, wood, moss, and rocks
+
+5. Asset cohesion
+Do not draw raw PNGs directly if they look pasted.
+Create a centralized render pipeline for tank assets:
+- scale normalization
+- underwater teal tint
+- depth-based opacity/fade
+- soft contact shadows
+- top-down lighting
+- subtle edge softening if possible
+- consistent color grade
+- foreground/midground/background layering
+
+6. UI style
+- dark teal glassmorphism panels
+- thin cyan borders
+- soft shadows
+- rounded corners
+- clean readable typography
+- polished icon buttons
+- strong spacing/alignment
+- not cluttered
+- not debug-looking
+
+============================================================
+FIRST BUILD REQUIREMENTS
+============================================================
+
+Build these screens/routes/tabs, but only the Aquarium screen needs full polish at first:
+
+1. Aquarium / Ecosystem screen — FULLY IMPLEMENTED FIRST
+- real tank scene
+- fish swimming
+- shrimp/snails near bottom
+- feed button
+- clean button
+- water change button
+- decorate button placeholder
+- add species button placeholder
+- water quality stats
+- population panel
+- habitat score
+- event log or small messages
+
+2. House / Eco-center tab — SIMPLE PLACEHOLDER
+- show cards/rooms/tanks only
+- do not spend major polish yet
+
+3. Species / Shop tab — SIMPLE PLACEHOLDER
+- basic card grid using species data
+- no deep shop yet
+
+4. Research / Breeding / Rescue / Tasks / Journal — STUBS ONLY
+- simple placeholder screens so navigation exists
+- do not build the full systems yet
+
+============================================================
+SIMULATION REQUIREMENTS FOR FIRST BUILD
+============================================================
+
+Create a simple but real deterministic simulation core.
+Separate simulation from rendering.
+
+State should include:
+- day/time
+- resources: coins/leaves, water/research, reputation
+- tanks
+- species populations
+- water quality values:
+  - oxygen
+  - temperature
+  - pH
+  - ammonia
+  - nitrite
+  - nitrate
+  - cleanliness
+- habitat score
+- event log
+
+Implement basic loop:
+- fish/shrimp/snails produce waste over time
+- uneaten food increases waste/ammonia
+- ammonia/nitrite/nitrate affect health/habitat score
+- plants help oxygen/cleanliness slightly
+- cleaning improves cleanliness
+- water change reduces ammonia/nitrite/nitrate
+- overfeeding creates warning events
+- low cleanliness creates warning events
+
+Keep it readable and fun. Do not overcomplicate chemistry yet.
+
+============================================================
+PROJECT ARCHITECTURE
+============================================================
+
+Use a clean structure similar to:
+
+src/
+  main.ts
+  app.ts
+  styles.css
+  core/
+    sim.ts
+    state.ts
+    rng.ts
+    save.ts
+  data/
+    species.ts
+    plants.ts
+    hardscape.ts
+    tanks.ts
+  render/
+    canvasRenderer.ts
+    tankScene.ts
+    assetLoader.ts
+    layers.ts
+    effects.ts
+  ui/
+    layout.ts
+    topBar.ts
+    sidePanels.ts
+    bottomActions.ts
+    screens.ts
+  utils/
+    math.ts
+    dom.ts
+
+assets/
+  TankView_Assets/
+
+docs/
+  reference/
+    glasswater_mockups/
+
+Rules:
+- Simulation must not depend on Canvas or DOM.
+- Renderer reads state and data, then draws.
+- UI dispatches actions into the simulation.
+- Asset paths should be centralized.
+- Avoid spaghetti code.
+- Avoid one giant file.
+
+============================================================
+IMPLEMENTATION ORDER
+============================================================
+
+1. Inspect available assets and reference images.
+2. Create new Vite + TypeScript project if needed.
+3. Build clean app shell and navigation.
+4. Build state and sim loop.
+5. Build main aquarium screen layout.
+6. Load TankView_Assets and create scene layers.
+7. Build physical tank: room background, stand, glass tank, interior, fish layer, UI overlay.
+8. Build water-quality UI and population panel.
+9. Implement Feed, Clean, Water Change buttons.
+10. Add event log/messages.
+11. Add save/load.
+12. Polish visuals against the main reference mockup.
+13. Run the game, fix errors, and do one self-review pass.
+
+============================================================
+STRICT VISUAL INSTRUCTIONS
+============================================================
+
+The first screen must NOT look like:
+- flat web app
+- raw prototype
+- basic rectangle tank
+- random PNG collage
+- cartoon mobile game
+- plain brown room
+- repeated flat plants
+- debug dashboard
+
+It should look like:
+- premium aquarium management sim
+- cozy eco-center room
+- physical glass tank on wood stand
+- rich planted aquascape
+- polished dark teal UI
+- warm room lighting + cool tank lighting
+
+If the result looks flat, do another visual pass before moving on.
+
+============================================================
+NON-GOALS FOR THE FIRST DELIVERABLE
+============================================================
+
+Do NOT implement yet:
+- full breeding genetics
+- full rescue system
+- full research tree
+- full store economy
+- full habitat editor
+- multiple ecosystem types
+- ant colonies
+- terrariums
+- saltwater/reef
+- Steam integration
+- multiplayer
+- 3D room walking
+
+Only make the main aquarium screen strong first.
+
+============================================================
+ACCEPTANCE CRITERIA
+============================================================
+
+The first deliverable is complete only when:
+- npm install works
+- npm run dev works
+- no major console errors
+- main tank screen is interactive
+- fish/creatures animate
+- feed/clean/water change change simulation values
+- UI updates from state
+- save/load works
+- screen visually resembles the main aquarium reference composition
+- tank reads as a physical glass aquarium on a wood stand
+- room feels warm/cozy
+- aquarium interior feels rich and grounded
+- UI feels polished and premium
+
+============================================================
+AFTER FINISHING
+============================================================
+
+When done, give me:
+1. The exact commands to run the game.
+2. A summary of what you built.
+3. A list of files created/changed.
+4. What reference image the main screen is closest to.
+5. What still looks weakest visually.
+6. The next 3 highest-value improvements.
+
+Start now by inspecting the folder, assets, and reference images, then build the project from scratch.
